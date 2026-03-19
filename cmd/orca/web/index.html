@@ -138,63 +138,6 @@
       color: var(--accent);
     }
 
-    /* API Key input */
-    .api-key-section {
-      margin-bottom: 2rem;
-      padding: 1.25rem;
-      background: var(--surface);
-      border: none;
-      border-radius: 8px;
-    }
-
-    .api-key-section label {
-      display: block;
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      margin-bottom: 0.5rem;
-    }
-
-    .api-key-wrapper {
-      position: relative;
-      max-width: 100%;
-    }
-
-    .api-key-section input {
-      width: 100%;
-      padding: 0.6rem 2.5rem 0.6rem 0.75rem;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--text);
-      font-size: 0.9rem;
-      font-family: monospace;
-    }
-
-    .api-key-section input:focus {
-      outline: none;
-      border-color: var(--accent);
-    }
-
-    .api-key-toggle {
-      position: absolute;
-      right: 0.75rem;
-      top: 50%;
-      transform: translateY(-50%);
-      background: none;
-      border: none;
-      color: var(--text-muted);
-      cursor: pointer;
-      padding: 0.25rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: color 0.2s;
-    }
-
-    .api-key-toggle:hover {
-      color: var(--text);
-    }
-
     /* Video list */
     .video-grid {
       display: grid;
@@ -693,20 +636,7 @@
   <main>
     <!-- Videos list view -->
     <div id="view-videos" class="view active">
-      <div class="api-key-section">
-        <label for="api-key">API Key</label>
-        <div class="api-key-wrapper">
-          <input type="password" id="api-key" placeholder="Enter your API key">
-          <button type="button" class="api-key-toggle" id="api-key-toggle" title="Toggle visibility">
-            <svg id="eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-              <circle cx="12" cy="12" r="3"></circle>
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      <div class="upload-progress" id="upload-progress">
+      <div class="upload-progress" id="upload-progress" style="display:none;">
         <div class="progress-bar"><div class="fill" id="progress-fill"></div></div>
         <div class="progress-text" id="progress-text">Uploading...</div>
       </div>
@@ -1053,10 +983,7 @@
 
       try {
         // Step 1: Fetch the original MP4 from the local stream
-        const apiKey = localStorage.getItem('orca_api_key') || '';
-        const statusRes = await fetch('/api/status/' + encodeURIComponent(videoId), {
-          headers: { 'X-API-Key': apiKey }
-        });
+        const statusRes = await fetch('/api/status/' + encodeURIComponent(videoId));
         if (!statusRes.ok) throw new Error('Failed to get video status');
         const videoData = await statusRes.json();
 
@@ -1114,7 +1041,6 @@
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            'X-API-Key': apiKey,
           },
           body: JSON.stringify({ blob_id: blobId }),
         });
@@ -1127,6 +1053,8 @@
 
         // Update compare view
         document.getElementById('walrus-blob-id').textContent = blobId;
+        document.getElementById('walrus-status').textContent = 'Playing';
+        document.getElementById('walrus-status').className = 'stat-value success';
         const walrusVideo = document.getElementById('compare-walrus-video');
         if (typeof window.loadWalrusCompare === 'function') {
           window.loadWalrusCompare(walrusVideo, blobId);
@@ -1204,38 +1132,6 @@
           navigate('videos', null, push);
         }
       }
-    }
-
-    // API Key persistence & toggle
-    const apiKeyInput = document.getElementById('api-key');
-    const apiKeyToggle = document.getElementById('api-key-toggle');
-    const eyeIcon = document.getElementById('eye-icon');
-
-    apiKeyInput.value = localStorage.getItem('orca_api_key') || '';
-    apiKeyInput.addEventListener('input', () => {
-      localStorage.setItem('orca_api_key', apiKeyInput.value);
-    });
-
-    apiKeyToggle.addEventListener('click', () => {
-      const isPassword = apiKeyInput.type === 'password';
-      apiKeyInput.type = isPassword ? 'text' : 'password';
-      
-      // Update eye icon
-      if (isPassword) {
-        eyeIcon.innerHTML = `
-          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-          <line x1="1" y1="1" x2="23" y2="23"></line>
-        `;
-      } else {
-        eyeIcon.innerHTML = `
-          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-          <circle cx="12" cy="12" r="3"></circle>
-        `;
-      }
-    });
-
-    function getApiKey() {
-      return apiKeyInput.value || localStorage.getItem('orca_api_key') || '';
     }
 
     // Video list
@@ -1344,7 +1240,6 @@
       try {
         const res = await fetch('/api/videos/' + encodeURIComponent(id), {
           method: 'DELETE',
-          headers: { 'X-API-Key': getApiKey() }
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
@@ -1360,11 +1255,9 @@
     async function loadVideos() {
       const container = document.getElementById('video-list');
       try {
-        const res = await fetch('/api/videos', {
-          headers: { 'X-API-Key': getApiKey() }
-        });
+        const res = await fetch('/api/videos');
         if (!res.ok) {
-          setEmptyState(container, 'Failed to load videos. Check your API key.');
+          setEmptyState(container, 'Failed to load videos.');
           return;
         }
         const data = await res.json();
@@ -1423,15 +1316,9 @@
         return;
       }
 
-      const apiKey = getApiKey();
-      if (!apiKey) {
-        showResult('error', 'Please enter your API key first.');
-        return;
-      }
-
       uploadResult.className = 'upload-result';
       uploadResult.style.display = 'none';
-      uploadProgress.classList.add('active');
+      uploadProgress.style.display = '';
       progressFill.style.width = '0%';
       progressText.textContent = 'Uploading ' + file.name + '...';
 
@@ -1444,7 +1331,6 @@
 
       const xhr = new XMLHttpRequest();
       xhr.open('POST', '/api/upload');
-      xhr.setRequestHeader('X-API-Key', apiKey);
       // When wallet is connected, tell backend to skip Walrus upload (frontend handles it)
       if (typeof window.isWalletConnected === 'function' && window.isWalletConnected()) {
         xhr.setRequestHeader('X-Walrus-Client', 'true');
@@ -1459,7 +1345,7 @@
       });
 
       xhr.addEventListener('load', () => {
-        uploadProgress.classList.remove('active');
+        uploadProgress.style.display = 'none';
         if (xhr.status === 202) {
           const data = JSON.parse(xhr.responseText);
           uploadFile.value = '';
@@ -1473,7 +1359,7 @@
       });
 
       xhr.addEventListener('error', () => {
-        uploadProgress.classList.remove('active');
+        uploadProgress.style.display = 'none';
         showResult('error', 'Network error. Is the server running?');
       });
 
@@ -1515,9 +1401,7 @@
       if (generation !== navGeneration) return;
 
       try {
-        const res = await fetch('/api/status/' + encodeURIComponent(id), {
-          headers: { 'X-API-Key': getApiKey() }
-        });
+        const res = await fetch('/api/status/' + encodeURIComponent(id));
 
         if (generation !== navGeneration) return;
 
@@ -1545,9 +1429,7 @@
               pollInterval = null;
               return;
             }
-            const r = await fetch('/api/status/' + encodeURIComponent(id), {
-              headers: { 'X-API-Key': getApiKey() }
-            });
+            const r = await fetch('/api/status/' + encodeURIComponent(id));
             if (generation !== navGeneration) {
               clearInterval(pollInterval);
               pollInterval = null;
@@ -1646,9 +1528,6 @@
       }
     }
 
-    window.addEventListener('popstate', handleRoute);
-    handleRoute();
-
     // Compare View
     let compareVideoId = null;
     let orcaFirstFrameTime = null;
@@ -1702,9 +1581,7 @@
       document.getElementById('walrus-blob-id').textContent = '--';
 
       try {
-        const res = await fetch('/api/status/' + encodeURIComponent(id), {
-          headers: { 'X-API-Key': getApiKey() }
-        });
+        const res = await fetch('/api/status/' + encodeURIComponent(id));
 
         if (!res.ok) {
           document.getElementById('orca-status').textContent = 'Error';
@@ -1913,6 +1790,10 @@
 
       videoEl.addEventListener('seeked', seekHandler);
     }
+
+    // Router init (must be after all let/const declarations to avoid TDZ errors)
+    window.addEventListener('popstate', handleRoute);
+    handleRoute();
   </script>
 </body>
 </html>

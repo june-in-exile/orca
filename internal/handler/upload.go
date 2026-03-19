@@ -119,6 +119,18 @@ func (h *Upload) processVideo(id, filePath string) {
 		return
 	}
 
+	// If the backend supports finalization (e.g., Walrus), upload segments now
+	type finalizer interface {
+		Finalize(id, gatewayURL string) error
+	}
+	if f, ok := h.store.(finalizer); ok {
+		if err := f.Finalize(id, h.cfg.GatewayURL); err != nil {
+			slog.Error("storage finalize failed", "id", id, "error", err)
+			h.videos.SetFailed(id, "storage finalize failed: "+err.Error())
+			return
+		}
+	}
+
 	h.videos.SetReady(id, duration)
 	slog.Info("video ready", "id", id, "duration", duration)
 }

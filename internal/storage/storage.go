@@ -16,6 +16,10 @@ type Backend interface {
 	OutputDir(id string) string
 	SaveMetadata(id string, meta Metadata) error
 	LoadMetadata(id string) (Metadata, error)
+	Delete(id string) error
+	List() ([]string, error)
+	HasManifest(id string) bool
+	HasUpload(id string) bool
 }
 
 // LocalStorage implements Backend using the local filesystem.

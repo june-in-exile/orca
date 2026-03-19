@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"embed"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -22,7 +23,7 @@ import (
 //go:embed web
 var webFS embed.FS
 
-func scanStorage(store *storage.LocalStorage, videos *model.VideoStore) {
+func scanStorage(store storage.Backend, videos *model.VideoStore) {
 	ids, err := store.List()
 	if err != nil {
 		slog.Warn("failed to scan storage directory", "error", err)
@@ -63,7 +64,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	store := storage.NewLocal(cfg.StorageDir)
+	store, err := storage.New(cfg)
+	if err != nil {
+		slog.Error("failed to create storage backend", "error", err)
+		os.Exit(1)
+	}
+	if closer, ok := store.(io.Closer); ok {
+		defer closer.Close()
+	}
+
 	proc := processor.New(cfg.FFmpegPath, cfg.FFprobePath)
 	videos := model.NewVideoStore()
 
@@ -71,15 +80,12 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// API routes (with API key auth)
-	apiAuth := middleware.APIKey(cfg.APIKey)
-	mux.Handle("POST /api/upload", apiAuth(handler.NewUpload(store, proc, videos, cfg)))
-	mux.Handle("GET /api/status/{id}", apiAuth(handler.NewStatus(videos)))
-
-	// Video list
-	mux.Handle("GET /api/videos", apiAuth(handler.NewVideos(videos)))
-	mux.Handle("DELETE /api/videos/{id}", apiAuth(handler.NewDelete(store, videos)))
-	mux.Handle("PUT /api/videos/{id}/walrus", apiAuth(handler.NewWalrusSet(videos)))
+	// API routes
+	mux.Handle("POST /api/upload", handler.NewUpload(store, proc, videos, cfg))
+	mux.Handle("GET /api/status/{id}", handler.NewStatus(videos))
+	mux.Handle("GET /api/videos", handler.NewVideos(videos))
+	mux.Handle("DELETE /api/videos/{id}", handler.NewDelete(store, videos))
+	mux.Handle("PUT /api/videos/{id}/walrus", handler.NewWalrusSet(videos))
 	mux.Handle("GET /api/walrus/{blobId}", handler.NewWalrusBlob(cfg))
 
 	// Stream routes (with CORS)
@@ -92,10 +98,8 @@ func main() {
 		slog.Error("failed to create web filesystem", "error", err)
 		os.Exit(1)
 	}
-	// Serve index.html for all other routes to support SPA path-based routing
 	fileServer := http.FileServer(http.FS(webSub))
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		// If it's a file with an extension, or it exists in the filesystem, serve it
 		path := r.URL.Path
 		if path != "/" {
 			_, err := fs.Stat(webSub, path[1:])
@@ -104,8 +108,6 @@ func main() {
 				return
 			}
 		}
-
-		// Otherwise serve index.html
 		r.URL.Path = "/"
 		fileServer.ServeHTTP(w, r)
 	})
@@ -118,14 +120,14 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// Graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	go func() {
 		slog.Info("orca server starting",
 			"port", cfg.Port,
-			"storage", cfg.StorageDir,
+			"storage_backend", cfg.StorageBackend,
+			"storage_dir", cfg.StorageDir,
 			"walrus_publisher", cfg.WalrusPublisher,
 			"walrus_aggregator", cfg.WalrusAggregator,
 		)

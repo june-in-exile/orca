@@ -23,7 +23,6 @@ go test ./internal/processor/... -run TestValidateMagicBytes -v
 |-----|---------|-------------|
 | `ORCA_PORT` | `8080` | HTTP listen port |
 | `ORCA_STORAGE_DIR` | `./storage` | Local storage root |
-| `ORCA_API_KEY` | _(none)_ | Required for `/api/*` endpoints |
 | `ORCA_FFMPEG_PATH` | `ffmpeg` | Path to ffmpeg binary |
 | `ORCA_FFPROBE_PATH` | `ffprobe` | Path to ffprobe binary |
 | `ORCA_MAX_FILE_SIZE_MB` | `500` | Upload size limit in MB |
@@ -34,7 +33,7 @@ Orca is a video-aware middleware layer that sits above generic blob storage (cur
 
 ```
 cmd/orca/main.go          — wires all packages; two route groups:
-                            POST /api/upload, GET /api/status/{id}  → API key required
+                            POST /api/upload, GET /api/status/{id}
                             GET /stream/{id}/{file...}              → CORS open
 
 internal/config/          — env-based config; validates ffmpeg/ffprobe at startup
@@ -42,7 +41,7 @@ internal/model/           — in-memory VideoStore (sync.RWMutex); NOT persisted
 internal/storage/         — Backend interface + LocalStorage; future: WalrusStorage
 internal/processor/       — FFmpeg wrapper (Segment/Probe) + magic-byte MP4 validator
 internal/handler/         — HTTP handlers; upload streams to disk, then goroutine processes async
-internal/middleware/      — APIKey auth (X-API-Key header) + CORS (open on /stream/*)
+internal/middleware/      — CORS middleware (open on /stream/*)
 ```
 
 ### Key design decisions
