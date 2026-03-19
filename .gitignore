@@ -1,0 +1,6 @@
+storage/
+bin/
+*.mp4
+*.ts
+*.m3u8
+.env
