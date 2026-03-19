@@ -289,12 +289,35 @@ vlc http://localhost:8080/stream/abc123/index.m3u8
 - 播放器（hls.js，不用自己寫）
 - 影片清單 + 播放頁面
 
-### Milestone 3（+1 週）：Walrus 對比 Demo
+### Milestone 3（已完成）：Walrus 對比 Demo
 
 - 同一部影片分別用 Orca 和 Walrus 播放
 - 左右對比：首播延遲、seek 延遲、開發者體驗
+- ⚠️ Walrus 端目前為 mock，尚未串接真實 Aggregator
 
-### Milestone 4（+2 週）：Walrus Storage Backend
+### Milestone 4（新）：真實 Walrus 串接
+
+將 compare view 的 Walrus 面板改為實際串接 Walrus Aggregator，達成真正的效能對比實驗。
+
+**具體工作：**
+
+1. **影片雙軌上傳**
+   - 上傳時同時發給 Orca 和 Walrus Publisher API
+   - 紀錄 Walrus blob ID
+2. **併發上傳最佳化（工程隱患處理）**
+   - 實作 Worker Pool 處理小檔案上傳，避免因網路往返（RTT）導致上傳效率低下
+3. **Compare View 實驗模式**
+   - Walrus 面板改用 `Aggregators/{blobId}/...` 直接串流
+   - 測量首播延遲、seek 延遲、buffer health 等指標
+
+**驗證方式：**
+
+```bash
+# 上傳影片，取得 Walrus blob ID
+# 打開 compare view，測量 Orca vs Walrus 的首播延遲差異
+```
+
+### Milestone 5（+2 週）：Walrus Storage Backend
 
 實作 `WalrusStorage`，讓 segments 和 manifests 實際存到 Walrus 去中心化儲存。
 
@@ -311,9 +334,9 @@ StorageBackend interface
    - Store：將 segment/manifest 上傳到 Walrus，取得 blob ID
    - Fetch：透過 blob ID 從 Walrus Aggregator 讀取資料
 
-2. **Blob ID 映射管理**
-   - 維護 `video ID → { manifest blob ID, segment blob IDs[] }` 的對應關係
-   - MVP 用本地 JSON 檔持久化，後續遷移到鏈上
+2. **Blob ID 映射管理（安全性與效能強化）**
+   - **隱患處理**：放棄原本規劃的 JSON 檔，改用 **SQLite** 或 **BoltDB** 儲存 `video ID → { manifest blob ID, segment blob IDs[] }`
+   - 確保在高併發寫入時資料不會毀損，並提供高速的索引查詢效能
 
 3. **Manifest 特殊處理**
    - Manifest 內的 segment URL 需改為 Orca Gateway 的 URL（不能直指 Walrus blob）
@@ -325,29 +348,18 @@ StorageBackend interface
 
 5. **Storage Backend 切換**
    - 環境變數 `ORCA_STORAGE_BACKEND=walrus` 切換
-   - Walrus 設定：`ORCA_WALRUS_PUBLISHER_URL`、`ORCA_WALRUS_AGGREGATOR_URL`
 
-**驗證方式：**
+### Milestone 6（+2 週）：多解析度（ABR）
 
-```bash
-# 啟動 Walrus backend
-ORCA_STORAGE_BACKEND=walrus \
-ORCA_WALRUS_PUBLISHER_URL=http://localhost:31415 \
-ORCA_WALRUS_AGGREGATOR_URL=http://localhost:31416 \
-make run
+**具體工作：**
 
-# 上傳後確認 segment 存在 Walrus 上
-curl -X POST http://localhost:8080/api/upload -F "video=@test.mp4"
-# 播放驗證串流正常
-```
-
-**不做：** 鏈上 metadata、erasure coding 策略調整、付費機制
-
-### Milestone 5（+2 週）：多解析度（ABR）
-
-- FFmpeg 轉出多個解析度（1080p / 720p / 480p）
-- Master manifest 關聯所有解析度
-- 播放器自動根據網速切換
+1. **多品質轉檔**
+   - FFmpeg 轉出多個解析度（1080p / 720p / 480p）
+   - Master manifest 關聯所有解析度
+2. **資源調度（工程隱患處理）**
+   - 實作簡單的 **Task Queue (工作佇列)**，限制併發轉檔任務數量，防止 CPU/Memory 耗盡導致系統崩潰
+3. **播放器整合**
+   - 播放器自動根據網速切換解析度
 
 ### 之後逐步加入
 
