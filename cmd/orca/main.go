@@ -72,6 +72,7 @@ func main() {
 
 	// Video list
 	mux.Handle("GET /api/videos", apiAuth(handler.NewVideos(videos)))
+	mux.Handle("DELETE /api/videos/{id}", apiAuth(handler.NewDelete(store, videos)))
 	mux.Handle("PUT /api/videos/{id}/walrus", apiAuth(handler.NewWalrusSet(videos)))
 	mux.Handle("GET /api/walrus/{blobId}", handler.NewWalrusBlob(cfg))
 

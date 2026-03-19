@@ -98,6 +98,16 @@ func (s *VideoStore) SetWalrusBlobID(id string, blobID string) {
 	s.mu.Unlock()
 }
 
+func (s *VideoStore) Delete(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.videos[id]; !ok {
+		return false
+	}
+	delete(s.videos, id)
+	return true
+}
+
 func (s *VideoStore) List() []Video {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

@@ -88,6 +88,14 @@ func (l *LocalStorage) HasManifest(id string) bool {
 	return err == nil
 }
 
+func (l *LocalStorage) Delete(id string) error {
+	dir := filepath.Join(l.root, id)
+	if _, err := os.Stat(dir); err != nil {
+		return fmt.Errorf("video directory not found: %w", err)
+	}
+	return os.RemoveAll(dir)
+}
+
 func (l *LocalStorage) HasUpload(id string) bool {
 	path := filepath.Join(l.root, id, "upload.mp4")
 	_, err := os.Stat(path)
