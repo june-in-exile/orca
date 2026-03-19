@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +14,8 @@ type Backend interface {
 	SegmentPath(id, file string) (string, error)
 	ManifestPath(id string) (string, error)
 	OutputDir(id string) string
+	SaveMetadata(id string, meta Metadata) error
+	LoadMetadata(id string) (Metadata, error)
 }
 
 // LocalStorage implements Backend using the local filesystem.
@@ -100,4 +103,44 @@ func (l *LocalStorage) HasUpload(id string) bool {
 	path := filepath.Join(l.root, id, "upload.mp4")
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// Metadata holds persistable video metadata.
+type Metadata struct {
+	Title string `json:"title"`
+}
+
+// SaveMetadata writes metadata.json into the video's storage directory.
+func (l *LocalStorage) SaveMetadata(id string, meta Metadata) error {
+	dir := filepath.Join(l.root, id)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create metadata dir: %w", err)
+	}
+	data, err := json.Marshal(meta)
+	if err != nil {
+		return fmt.Errorf("marshal metadata: %w", err)
+	}
+	path := filepath.Join(dir, "metadata.json")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("write metadata: %w", err)
+	}
+	return nil
+}
+
+// LoadMetadata reads metadata.json from the video's storage directory.
+// Returns empty Metadata and nil error if the file does not exist.
+func (l *LocalStorage) LoadMetadata(id string) (Metadata, error) {
+	path := filepath.Join(l.root, id, "metadata.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return Metadata{}, nil
+		}
+		return Metadata{}, fmt.Errorf("read metadata: %w", err)
+	}
+	var meta Metadata
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return Metadata{}, fmt.Errorf("unmarshal metadata: %w", err)
+	}
+	return meta, nil
 }

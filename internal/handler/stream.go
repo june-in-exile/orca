@@ -58,6 +58,9 @@ func (h *Stream) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case ".ts":
 		filePath, err = h.store.SegmentPath(id, file)
 		w.Header().Set("Content-Type", "video/mp2t")
+	case ".mp4":
+		filePath, err = h.store.SegmentPath(id, file)
+		w.Header().Set("Content-Type", "video/mp4")
 	default:
 		http.Error(w, "unsupported file type", http.StatusBadRequest)
 		return

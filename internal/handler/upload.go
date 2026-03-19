@@ -84,6 +84,10 @@ func (h *Upload) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	h.videos.Create(id, title)
 
+	if err := h.store.SaveMetadata(id, storage.Metadata{Title: title}); err != nil {
+		slog.Error("failed to save metadata", "id", id, "error", err)
+	}
+
 	go h.processVideo(id, filePath)
 
 	// Skip backend Walrus upload when frontend handles it via wallet

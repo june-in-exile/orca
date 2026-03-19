@@ -37,12 +37,18 @@ func scanStorage(store *storage.LocalStorage, videos *model.VideoStore) {
 		} else {
 			t = time.Now().UTC()
 		}
+
+		title := id
+		if meta, err := store.LoadMetadata(id); err == nil && meta.Title != "" {
+			title = meta.Title
+		}
+
 		if store.HasManifest(id) {
-			videos.Restore(id, id, model.StatusReady, t)
-			slog.Info("restored video", "id", id, "status", "ready")
+			videos.Restore(id, title, model.StatusReady, t)
+			slog.Info("restored video", "id", id, "title", title, "status", "ready")
 		} else if store.HasUpload(id) {
-			videos.Restore(id, id, model.StatusFailed, t)
-			slog.Info("restored video", "id", id, "status", "failed")
+			videos.Restore(id, title, model.StatusFailed, t)
+			slog.Info("restored video", "id", id, "title", title, "status", "failed")
 		}
 	}
 	if len(ids) > 0 {
