@@ -14,12 +14,13 @@ const (
 )
 
 type Video struct {
-	ID           string  `json:"id"`
-	Title        string  `json:"title"`
-	Status       Status  `json:"status"`
-	CreatedAt    string  `json:"created_at"`
-	Duration     float64 `json:"duration,omitempty"`
-	Error        string  `json:"error,omitempty"`
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Status    Status `json:"status"`
+	CreatedAt string `json:"created_at"`
+	BlobID    string `json:"blob_id,omitempty"`
+	BlobURL   string `json:"blob_url,omitempty"`
+	Error     string `json:"error,omitempty"`
 }
 
 type VideoStore struct {
@@ -34,28 +35,11 @@ func NewVideoStore() *VideoStore {
 }
 
 func (s *VideoStore) Create(id, title string) *Video {
-	return s.CreateAt(id, title, time.Now().UTC())
-}
-
-func (s *VideoStore) CreateAt(id, title string, t time.Time) *Video {
 	v := &Video{
 		ID:        id,
 		Title:     title,
 		Status:    StatusProcessing,
-		CreatedAt: t.Format(time.RFC3339),
-	}
-	s.mu.Lock()
-	s.videos[id] = v
-	s.mu.Unlock()
-	return v
-}
-
-func (s *VideoStore) Restore(id, title string, status Status, t time.Time) *Video {
-	v := &Video{
-		ID:        id,
-		Title:     title,
-		Status:    status,
-		CreatedAt: t.Format(time.RFC3339),
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
 	}
 	s.mu.Lock()
 	s.videos[id] = v
@@ -74,11 +58,12 @@ func (s *VideoStore) Get(id string) (*Video, bool) {
 	return &copied, true
 }
 
-func (s *VideoStore) SetReady(id string, duration float64) {
+func (s *VideoStore) SetReady(id, blobID, blobURL string) {
 	s.mu.Lock()
 	if v, ok := s.videos[id]; ok {
 		v.Status = StatusReady
-		v.Duration = duration
+		v.BlobID = blobID
+		v.BlobURL = blobURL
 	}
 	s.mu.Unlock()
 }

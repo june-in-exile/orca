@@ -37,14 +37,17 @@ func TestVideoStore_SetReady(t *testing.T) {
 	store := NewVideoStore()
 	store.Create("test-1", "My Video")
 
-	store.SetReady("test-1", 120.5)
+	store.SetReady("test-1", "blob123", "https://aggregator/v1/blobs/blob123")
 
 	v, _ := store.Get("test-1")
 	if v.Status != StatusReady {
 		t.Errorf("expected status ready, got %s", v.Status)
 	}
-	if v.Duration != 120.5 {
-		t.Errorf("expected duration 120.5, got %f", v.Duration)
+	if v.BlobID != "blob123" {
+		t.Errorf("expected blob_id blob123, got %s", v.BlobID)
+	}
+	if v.BlobURL != "https://aggregator/v1/blobs/blob123" {
+		t.Errorf("expected blob_url, got %s", v.BlobURL)
 	}
 }
 
@@ -84,5 +87,23 @@ func TestVideoStore_List(t *testing.T) {
 	list := store.List()
 	if len(list) != 2 {
 		t.Errorf("expected 2 videos, got %d", len(list))
+	}
+}
+
+func TestVideoStore_Delete(t *testing.T) {
+	store := NewVideoStore()
+	store.Create("test-1", "My Video")
+
+	if !store.Delete("test-1") {
+		t.Fatal("expected delete to return true")
+	}
+
+	_, ok := store.Get("test-1")
+	if ok {
+		t.Fatal("expected video to be deleted")
+	}
+
+	if store.Delete("test-1") {
+		t.Fatal("expected delete of nonexistent to return false")
 	}
 }

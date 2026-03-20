@@ -448,7 +448,6 @@
     </div>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <script type="module">
     // --- Slush Wallet Integration ---
     const SUI_NETWORK = 'sui:testnet';
@@ -679,10 +678,6 @@
       statusBadge.textContent = v.status;
       meta.appendChild(statusBadge);
 
-      const durationEl = document.createElement('span');
-      durationEl.textContent = v.duration ? formatDuration(v.duration) : '--:--';
-      meta.appendChild(durationEl);
-
       const dateEl = document.createElement('span');
       dateEl.textContent = formatDate(v.created_at);
       meta.appendChild(dateEl);
@@ -853,18 +848,11 @@
     }
 
     // Player
-    let hls = null;
-
     function loadPlayer(id) {
       const videoEl = document.getElementById('video-player');
       const videoIdEl = document.getElementById('player-video-id');
 
       videoIdEl.textContent = id;
-
-      if (hls) {
-        hls.destroy();
-        hls = null;
-      }
       videoEl.removeAttribute('src');
 
       checkAndPlay(id, navGeneration);
@@ -895,11 +883,12 @@
         statusEl.className = 'status-badge ' + safeStatus;
 
         if (video.status === 'ready') {
-          const streamUrl = window.location.origin + '/stream/' + encodeURIComponent(id) + '/index.m3u8';
-          urlEl.textContent = streamUrl;
-          startPlayer(videoEl, streamUrl);
+          const blobUrl = video.blob_url;
+          urlEl.textContent = blobUrl;
+          videoEl.src = blobUrl;
+          videoEl.play().catch(() => {});
         } else if (video.status === 'processing') {
-          urlEl.textContent = 'Processing... will auto-play when ready.';
+          urlEl.textContent = 'Uploading to Walrus... will auto-play when ready.';
           pollInterval = setInterval(async () => {
             if (generation !== navGeneration) {
               clearInterval(pollInterval);
@@ -921,40 +910,24 @@
               if (v.status === 'ready') {
                 clearInterval(pollInterval);
                 pollInterval = null;
-                const sUrl = window.location.origin + '/stream/' + encodeURIComponent(id) + '/index.m3u8';
-                urlEl.textContent = sUrl;
-                startPlayer(videoEl, sUrl);
+                urlEl.textContent = v.blob_url;
+                videoEl.src = v.blob_url;
+                videoEl.play().catch(() => {});
               } else if (v.status === 'failed') {
                 clearInterval(pollInterval);
                 pollInterval = null;
-                urlEl.textContent = 'Processing failed: ' + (v.error || 'unknown error');
+                urlEl.textContent = 'Upload failed: ' + (v.error || 'unknown error');
               }
             }
           }, 2000);
         } else {
-          urlEl.textContent = 'Processing failed: ' + (video.error || 'unknown error');
+          urlEl.textContent = 'Upload failed: ' + (video.error || 'unknown error');
         }
       } catch (err) {
         if (generation !== navGeneration) return;
         statusEl.textContent = 'error';
         statusEl.className = 'status-badge failed';
         urlEl.textContent = 'Cannot connect to server.';
-      }
-    }
-
-    function startPlayer(videoEl, url) {
-      if (Hls.isSupported()) {
-        hls = new Hls();
-        hls.loadSource(url);
-        hls.attachMedia(videoEl);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          videoEl.play().catch(() => {});
-        });
-      } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
-        videoEl.src = url;
-        videoEl.addEventListener('loadedmetadata', () => {
-          videoEl.play().catch(() => {});
-        }, { once: true });
       }
     }
 
@@ -974,12 +947,6 @@
     }
 
     // Utilities
-    function formatDuration(seconds) {
-      const m = Math.floor(seconds / 60);
-      const s = Math.floor(seconds % 60);
-      return m + ':' + String(s).padStart(2, '0');
-    }
-
     function formatDate(isoStr) {
       if (!isoStr) return '';
       const d = new Date(isoStr);

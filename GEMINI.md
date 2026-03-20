@@ -2,53 +2,40 @@
 
 ## Project Overview
 
-Orca is a **video-native decentralized storage protocol** implemented in Go. It acts as a middleware layer on top of general-purpose storage (like Walrus or local storage), handling video-specific logic such as HLS (HTTP Live Streaming) segmentation, manifest management, and metadata indexing. The goal is to make decentralized video streaming as seamless as traditional CDNs.
+Orca is a **video-native decentralized storage infrastructure** for Sui. It is transitioning from a v1 video-native middleware (local processing/streaming) to a v2 architecture centered around **Walrus** (decentralized storage) and **Seal** (access control).
 
 ## Technologies
 
 - **Language**: Go (v1.25+)
-- **Video Processing**: FFmpeg & FFprobe
-- **Streaming Protocol**: HLS (m3u8/ts)
+- **Storage**: Walrus (Testnet)
+- **Video Processing**: FFmpeg (temporarily disabled during v2 migration)
 - **Architecture**:
-  - `cmd/orca`: Entry point for the server.
-  - `internal/handler`: HTTP handlers for upload, status, and streaming.
-  - `internal/processor`: Wrapper for FFmpeg/FFprobe operations.
-  - `internal/storage`: Abstraction for video storage (currently supports local disk).
-  - `internal/model`: In-memory state management for video metadata.
-  - `internal/middleware`: API Key authentication and CORS support.
+  - `cmd/orca`: Server entry point.
+  - `internal/handler`: HTTP handlers (Upload/Status/Videos). Now integrates with Walrus.
+  - `internal/walrus`: Client for Walrus Publisher and Aggregator.
+  - `internal/model`: In-memory state for video metadata and Walrus Blob IDs.
+  - `internal/config`: Configuration for Walrus endpoints and local settings.
 
-## Building and Running
+## Core Workflows (Current v2 Transition)
 
-The project includes a `Makefile` for common tasks:
-
-- **Run development server**: `make run`
-- **Build binary**: `make build` (Output: `bin/orca`)
-- **Run tests**: `make test`
-- **Lint code**: `make lint`
-- **Clean workspace**: `make clean` (Removes `bin/` and `storage/`)
-
-## Environment Variables
-
-Configure the server using the following environment variables:
-
-- `ORCA_PORT`: Port to listen on (default: `8080`).
-- `ORCA_STORAGE_DIR`: Path to the directory for storing videos (default: `./storage`).
-- `ORCA_API_KEY`: Required API key for management operations (Upload/Status).
-- `ORCA_MAX_FILE_SIZE_MB`: Max upload size in megabytes (default: `500`).
-- `ORCA_FFMPEG_PATH`: Path to `ffmpeg` executable (default: `ffmpeg`).
-- `ORCA_FFPROBE_PATH`: Path to `ffprobe` executable (default: `ffprobe`).
-
-## API Endpoints
-
-- `POST /api/upload`: Upload an MP4 video (multipart form, key: `video`). Returns a video ID. (Requires `ORCA_API_KEY`)
-- `GET /api/status/{id}`: Check the processing status of a video. (Requires `ORCA_API_KEY`)
-- `GET /stream/{id}/index.m3u8`: HLS manifest for playback.
-- `GET /stream/{id}/{segment}.ts`: Individual video segments.
+1. **Upload**: 
+   - Receives MP4 via `POST /api/upload`.
+   - Validates magic bytes (MP4) and file size.
+   - **New**: Uploads the raw video blob directly to Walrus asynchronously.
+2. **Streaming**: 
+   - `GET /stream/{id}` is currently a proxy/redirect layer pointing to the Walrus Aggregator.
+3. **Status**: 
+   - Monitors the upload progress to Walrus and returns the `blobId` and `blobUrl`.
 
 ## Development Conventions
 
-- **Surgical Updates**: Prefer clean, idiomatic Go using the standard library where possible.
-- **Asynchronous Processing**: Uploads are acknowledged immediately; video segmentation and validation happen in background goroutines.
-- **Logging**: Use `log/slog` for structured logging.
-- **Validation**: Strict validation of magic bytes (MP4) and file size before accepting uploads.
-- **Errors**: Return JSON error responses for all API failures.
+- **Walrus First**: All video data should eventually reside on Walrus.
+- **Asynchronous Operations**: Heavy I/O (like Walrus uploads) happens in background goroutines.
+- **Minimal Middleware**: Moving away from being a "heavy" proxy towards being a metadata/access coordinator.
+
+## Environment Variables
+
+- `ORCA_WALRUS_PUBLISHER_URL`: Walrus publisher endpoint.
+- `ORCA_WALRUS_AGGREGATOR_URL`: Walrus aggregator endpoint.
+- `ORCA_WALRUS_EPOCHS`: Number of epochs to store blobs on Walrus.
+- `ORCA_API_KEY`: Auth for management APIs.

@@ -2,7 +2,6 @@ package handler
 
 import (
 	"bytes"
-	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -13,18 +12,17 @@ import (
 	"github.com/anthropics/orca/internal/config"
 	"github.com/anthropics/orca/internal/model"
 	"github.com/anthropics/orca/internal/processor"
-	"github.com/anthropics/orca/internal/storage"
+	"github.com/anthropics/orca/internal/walrus"
 )
 
 type Upload struct {
-	store  *storage.LocalStorage
-	proc   *processor.Processor
+	walrus *walrus.Client
 	videos *model.VideoStore
 	cfg    *config.Config
 }
 
-func NewUpload(store *storage.LocalStorage, proc *processor.Processor, videos *model.VideoStore, cfg *config.Config) *Upload {
-	return &Upload{store: store, proc: proc, videos: videos, cfg: cfg}
+func NewUpload(w *walrus.Client, videos *model.VideoStore, cfg *config.Config) *Upload {
+	return &Upload{walrus: w, videos: videos, cfg: cfg}
 }
 
 func (h *Upload) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -67,22 +65,9 @@ func (h *Upload) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		title = id
 	}
 
-	filePath, err := h.store.SaveUpload(id, bytes.NewReader(data))
-	if err != nil {
-		slog.Error("failed to save upload", "id", id, "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{
-			"error": "failed to save video",
-		})
-		return
-	}
-
 	h.videos.Create(id, title)
 
-	if err := h.store.SaveMetadata(id, storage.Metadata{Title: title}); err != nil {
-		slog.Error("failed to save metadata", "id", id, "error", err)
-	}
-
-	go h.processVideo(id, filePath)
+	go h.uploadToWalrus(id, data)
 
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"id":     id,
@@ -90,25 +75,17 @@ func (h *Upload) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Upload) processVideo(id, filePath string) {
-	ctx := context.Background()
-
-	duration, err := h.proc.Probe(filePath)
+func (h *Upload) uploadToWalrus(id string, data []byte) {
+	blobID, err := h.walrus.Store(data, h.cfg.WalrusEpochs)
 	if err != nil {
-		slog.Error("ffprobe validation failed", "id", id, "error", err)
-		h.videos.SetFailed(id, "video validation failed: "+err.Error())
+		slog.Error("walrus upload failed", "id", id, "error", err)
+		h.videos.SetFailed(id, "upload to Walrus failed: "+err.Error())
 		return
 	}
 
-	outputDir := h.store.OutputDir(id)
-	if err := h.proc.Segment(ctx, filePath, outputDir); err != nil {
-		slog.Error("ffmpeg segmentation failed", "id", id, "error", err)
-		h.videos.SetFailed(id, "video processing failed: "+err.Error())
-		return
-	}
-
-	h.videos.SetReady(id, duration)
-	slog.Info("video ready", "id", id, "duration", duration)
+	blobURL := h.walrus.BlobURL(blobID)
+	h.videos.SetReady(id, blobID, blobURL)
+	slog.Info("video uploaded to walrus", "id", id, "blob_id", blobID)
 }
 
 func generateID() string {

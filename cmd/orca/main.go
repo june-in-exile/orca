@@ -15,46 +15,11 @@ import (
 	"github.com/anthropics/orca/internal/handler"
 	"github.com/anthropics/orca/internal/middleware"
 	"github.com/anthropics/orca/internal/model"
-	"github.com/anthropics/orca/internal/processor"
-	"github.com/anthropics/orca/internal/storage"
+	"github.com/anthropics/orca/internal/walrus"
 )
 
 //go:embed web
 var webFS embed.FS
-
-func scanStorage(store *storage.LocalStorage, videos *model.VideoStore) {
-	ids, err := store.List()
-	if err != nil {
-		slog.Warn("failed to scan storage directory", "error", err)
-		return
-	}
-	for _, id := range ids {
-		dir := store.OutputDir(id)
-		info, err := os.Stat(dir)
-		var t time.Time
-		if err == nil {
-			t = info.ModTime().UTC()
-		} else {
-			t = time.Now().UTC()
-		}
-
-		title := id
-		if meta, err := store.LoadMetadata(id); err == nil && meta.Title != "" {
-			title = meta.Title
-		}
-
-		if store.HasManifest(id) {
-			videos.Restore(id, title, model.StatusReady, t)
-			slog.Info("restored video", "id", id, "title", title, "status", "ready")
-		} else if store.HasUpload(id) {
-			videos.Restore(id, title, model.StatusFailed, t)
-			slog.Info("restored video", "id", id, "title", title, "status", "failed")
-		}
-	}
-	if len(ids) > 0 {
-		slog.Info("restored videos from storage", "count", len(ids))
-	}
-}
 
 func main() {
 	cfg, err := config.Load()
@@ -63,24 +28,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	store := storage.NewLocal(cfg.StorageDir)
-
-	proc := processor.New(cfg.FFmpegPath, cfg.FFprobePath)
+	wc := walrus.NewClient(cfg.WalrusPublisher, cfg.WalrusAggregator)
 	videos := model.NewVideoStore()
-
-	scanStorage(store, videos)
 
 	mux := http.NewServeMux()
 
 	// API routes
-	mux.Handle("POST /api/upload", handler.NewUpload(store, proc, videos, cfg))
+	mux.Handle("POST /api/upload", handler.NewUpload(wc, videos, cfg))
 	mux.Handle("GET /api/status/{id}", handler.NewStatus(videos))
 	mux.Handle("GET /api/videos", handler.NewVideos(videos))
-	mux.Handle("DELETE /api/videos/{id}", handler.NewDelete(store, videos))
+	mux.Handle("DELETE /api/videos/{id}", handler.NewDelete(videos))
 
-	// Stream routes (with CORS)
+	// Stream route — redirects to Walrus aggregator
 	cors := middleware.CORS()
-	mux.Handle("GET /stream/{id}/{file...}", cors(handler.NewStream(store, videos)))
+	mux.Handle("GET /stream/{id}", cors(handler.NewStream(videos)))
 
 	// Frontend (embedded static files)
 	webSub, err := fs.Sub(webFS, "web")
@@ -116,7 +77,8 @@ func main() {
 	go func() {
 		slog.Info("orca server starting",
 			"port", cfg.Port,
-			"storage_dir", cfg.StorageDir,
+			"walrus_publisher", cfg.WalrusPublisher,
+			"walrus_aggregator", cfg.WalrusAggregator,
 		)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("server error", "error", err)

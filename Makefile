@@ -13,4 +13,4 @@ lint:
 	go vet ./...
 
 clean:
-	rm -rf bin/ storage/
+	rm -rf bin/

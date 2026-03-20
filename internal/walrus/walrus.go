@@ -1,7 +1,6 @@
 package walrus
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -35,17 +34,22 @@ func NewClient(publisherURL, aggregatorURL string) *Client {
 		publisherURL:  publisherURL,
 		aggregatorURL: aggregatorURL,
 		httpClient: &http.Client{
-			Timeout: 5 * time.Minute,
+			Timeout: 10 * time.Minute,
 		},
 	}
 }
 
-func (c *Client) Store(data []byte) (blobID string, err error) {
-	req, err := http.NewRequest(http.MethodPut, c.publisherURL+"/v1/blobs", bytes.NewReader(data))
+// Store uploads data to Walrus and returns the blob ID.
+func (c *Client) Store(data []byte, epochs int) (string, error) {
+	url := fmt.Sprintf("%s/v1/blobs?epochs=%d", c.publisherURL, epochs)
+	req, err := http.NewRequest(http.MethodPut, url, io.NopCloser(
+		io.NewSectionReader(readerAt(data), 0, int64(len(data))),
+	))
 	if err != nil {
 		return "", fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
+	req.ContentLength = int64(len(data))
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -72,22 +76,21 @@ func (c *Client) Store(data []byte) (blobID string, err error) {
 	return "", fmt.Errorf("store blob: no blob ID in response")
 }
 
-func (c *Client) Fetch(blobID string) ([]byte, error) {
-	req, err := http.NewRequest(http.MethodGet, c.aggregatorURL+"/v1/blobs/"+blobID, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
+// BlobURL returns the aggregator URL for a given blob ID.
+func (c *Client) BlobURL(blobID string) string {
+	return c.aggregatorURL + "/v1/blobs/" + blobID
+}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetch blob: %w", err)
-	}
-	defer resp.Body.Close()
+// readerAt wraps a byte slice to implement io.ReaderAt.
+type readerAt []byte
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("fetch blob: status %d: %s", resp.StatusCode, string(body))
+func (r readerAt) ReadAt(p []byte, off int64) (int, error) {
+	if off >= int64(len(r)) {
+		return 0, io.EOF
 	}
-
-	return io.ReadAll(resp.Body)
+	n := copy(p, r[off:])
+	if n < len(p) {
+		return n, io.EOF
+	}
+	return n, nil
 }
