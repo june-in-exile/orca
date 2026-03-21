@@ -10,7 +10,7 @@ import (
 )
 
 func TestVideos_EmptyList(t *testing.T) {
-	videos := model.NewVideoStore()
+	videos := mustNewVideoStore(t)
 	h := NewVideos(videos)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/videos", nil)
@@ -35,7 +35,7 @@ func TestVideos_EmptyList(t *testing.T) {
 }
 
 func TestVideos_ReturnsList(t *testing.T) {
-	videos := model.NewVideoStore()
+	videos := mustNewVideoStore(t)
 	videos.Create("vid-001", "Title 1", 0, "")
 	videos.Create("vid-002", "Title 2", 0, "")
 	videos.SetReady("vid-001", "blob1", "https://agg/v1/blobs/blob1", "blob1", "https://agg/v1/blobs/blob1")
@@ -73,7 +73,7 @@ func TestVideos_ReturnsList(t *testing.T) {
 }
 
 func TestVideos_ContentType(t *testing.T) {
-	videos := model.NewVideoStore()
+	videos := mustNewVideoStore(t)
 	h := NewVideos(videos)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/videos", nil)

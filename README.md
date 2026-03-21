@@ -199,13 +199,15 @@ make clean        # 清除 bin/
 - [x] 部署合約至 Sui Testnet (`0xe1a529343f1c8f78af6d92c302524eab3731b13897a0c9ba98d7548ffeb90a90`)
 - [x] 前端呼叫 `create_video` 建立鏈上 Video object
 
-### Phase 2：付費解鎖 + Seal 加密
+### Phase 2：付費解鎖 + Seal 加密 ✅
 
-- 上傳時前端以 Seal SDK 加密完整版（`@mysten/seal` 是 browser-only）
-- 前端付費牆：預覽播完 → 顯示價格 + 購買按鈕
-- 錢包連接 → 呼叫 `purchase` → mint AccessPass
-- Seal SDK 驗證 AccessPass → 取得解密金鑰 → 解密 Blob B
-- 已購買用戶重新進入時自動偵測 AccessPass，直接播完整版
+- [x] 上傳時前端以 Seal SDK 加密完整版（`@mysten/seal` 是 browser-only）
+- [x] 前端付費牆：預覽播完 → 顯示價格 + 購買按鈕
+- [x] 錢包連接 → 呼叫 `purchase_and_transfer` → mint AccessPass
+- [x] Seal SDK 驗證 AccessPass → 取得解密金鑰 → 解密 Blob B
+- [x] 已購買用戶重新進入時自動偵測 AccessPass，直接播完整版
+- [x] 合約新增 `update_full_blob_id`（解決 chicken-and-egg 問題）
+- [x] 後端分離上傳：免費影片上傳雙 blob；付費影片僅上傳預覽，完整版由前端加密上傳
 
 ### Phase 3：Orca SDK 封裝
 

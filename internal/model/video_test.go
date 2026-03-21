@@ -1,11 +1,22 @@
 package model
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
+func newTestStore(t *testing.T) *VideoStore {
+	t.Helper()
+	store, err := NewVideoStore("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return store
+}
+
 func TestVideoStore_CreateAndGet(t *testing.T) {
-	store := NewVideoStore()
+	store := newTestStore(t)
 
 	store.Create("test-1", "My Video", 100_000_000, "0xCAFE")
 
@@ -31,7 +42,7 @@ func TestVideoStore_CreateAndGet(t *testing.T) {
 }
 
 func TestVideoStore_GetNotFound(t *testing.T) {
-	store := NewVideoStore()
+	store := newTestStore(t)
 
 	_, ok := store.Get("nonexistent")
 	if ok {
@@ -40,7 +51,7 @@ func TestVideoStore_GetNotFound(t *testing.T) {
 }
 
 func TestVideoStore_SetReady(t *testing.T) {
-	store := NewVideoStore()
+	store := newTestStore(t)
 	store.Create("test-1", "My Video", 0, "")
 
 	store.SetReady("test-1", "previewBlob", "https://agg/v1/blobs/previewBlob", "fullBlob", "https://agg/v1/blobs/fullBlob")
@@ -64,7 +75,7 @@ func TestVideoStore_SetReady(t *testing.T) {
 }
 
 func TestVideoStore_SetSuiObjectID(t *testing.T) {
-	store := NewVideoStore()
+	store := newTestStore(t)
 	store.Create("test-1", "My Video", 0, "")
 
 	ok := store.SetSuiObjectID("test-1", "0xABC123")
@@ -79,7 +90,7 @@ func TestVideoStore_SetSuiObjectID(t *testing.T) {
 }
 
 func TestVideoStore_SetSuiObjectID_NotFound(t *testing.T) {
-	store := NewVideoStore()
+	store := newTestStore(t)
 
 	ok := store.SetSuiObjectID("nonexistent", "0xABC")
 	if ok {
@@ -88,7 +99,7 @@ func TestVideoStore_SetSuiObjectID_NotFound(t *testing.T) {
 }
 
 func TestVideoStore_SetFailed(t *testing.T) {
-	store := NewVideoStore()
+	store := newTestStore(t)
 	store.Create("test-1", "My Video", 0, "")
 
 	store.SetFailed("test-1", "something went wrong")
@@ -103,7 +114,7 @@ func TestVideoStore_SetFailed(t *testing.T) {
 }
 
 func TestVideoStore_GetReturnsImmutableCopy(t *testing.T) {
-	store := NewVideoStore()
+	store := newTestStore(t)
 	store.Create("test-1", "My Video", 0, "")
 
 	v1, _ := store.Get("test-1")
@@ -116,7 +127,7 @@ func TestVideoStore_GetReturnsImmutableCopy(t *testing.T) {
 }
 
 func TestVideoStore_List(t *testing.T) {
-	store := NewVideoStore()
+	store := newTestStore(t)
 	store.Create("a", "Title A", 0, "")
 	store.Create("b", "Title B", 0, "")
 
@@ -127,7 +138,7 @@ func TestVideoStore_List(t *testing.T) {
 }
 
 func TestVideoStore_Delete(t *testing.T) {
-	store := NewVideoStore()
+	store := newTestStore(t)
 	store.Create("test-1", "My Video", 0, "")
 
 	if !store.Delete("test-1") {
@@ -141,5 +152,92 @@ func TestVideoStore_Delete(t *testing.T) {
 
 	if store.Delete("test-1") {
 		t.Fatal("expected delete of nonexistent to return false")
+	}
+}
+
+func TestVideoStore_Persistence(t *testing.T) {
+	dir := t.TempDir()
+
+	store1, err := NewVideoStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store1.Create("v1", "Video One", 0, "")
+	store1.SetReady("v1", "pBlob", "pURL", "fBlob", "fURL")
+	store1.Create("v2", "Video Two", 500, "0xABC")
+
+	// Load a new store from the same directory — should recover data
+	store2, err := NewVideoStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	list := store2.List()
+	if len(list) != 2 {
+		t.Fatalf("expected 2 videos after reload, got %d", len(list))
+	}
+
+	v1, ok := store2.Get("v1")
+	if !ok {
+		t.Fatal("expected v1 to exist after reload")
+	}
+	if v1.Status != StatusReady {
+		t.Errorf("expected status ready, got %s", v1.Status)
+	}
+	if v1.PreviewBlobID != "pBlob" {
+		t.Errorf("expected preview_blob_id pBlob, got %s", v1.PreviewBlobID)
+	}
+	if v1.FullBlobID != "fBlob" {
+		t.Errorf("expected full_blob_id fBlob, got %s", v1.FullBlobID)
+	}
+
+	v2, ok := store2.Get("v2")
+	if !ok {
+		t.Fatal("expected v2 to exist after reload")
+	}
+	if v2.Price != 500 {
+		t.Errorf("expected price 500, got %d", v2.Price)
+	}
+	if v2.Creator != "0xABC" {
+		t.Errorf("expected creator 0xABC, got %s", v2.Creator)
+	}
+}
+
+func TestVideoStore_DeletePersists(t *testing.T) {
+	dir := t.TempDir()
+
+	store1, err := NewVideoStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store1.Create("v1", "Video One", 0, "")
+	store1.Create("v2", "Video Two", 0, "")
+	store1.Delete("v1")
+
+	store2, err := NewVideoStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := store2.Get("v1"); ok {
+		t.Fatal("expected v1 to be deleted after reload")
+	}
+	if _, ok := store2.Get("v2"); !ok {
+		t.Fatal("expected v2 to exist after reload")
+	}
+}
+
+func TestVideoStore_PersistenceFileLocation(t *testing.T) {
+	dir := t.TempDir()
+
+	store, err := NewVideoStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.Create("v1", "Test", 0, "")
+
+	path := filepath.Join(dir, "videos.json")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		t.Fatalf("expected %s to exist", path)
 	}
 }

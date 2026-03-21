@@ -95,6 +95,11 @@ func (h *Upload) parseRequest(r *http.Request) ([]byte, string, uint64, string, 
 }
 
 func (h *Upload) processAndUpload(id string, data []byte) {
+	video, ok := h.videos.Get(id)
+	if !ok {
+		return
+	}
+
 	previewData, err := processor.ExtractPreview(data, h.cfg.PreviewDuration, h.cfg.FFmpegPath)
 	if err != nil {
 		slog.Error("preview extraction failed", "id", id, "error", err)
@@ -102,6 +107,24 @@ func (h *Upload) processAndUpload(id string, data []byte) {
 		return
 	}
 
+	// Paid videos: upload only preview; full blob is encrypted + uploaded by the frontend
+	if video.Price > 0 {
+		previewBlobID, err := h.walrus.Store(previewData, h.cfg.WalrusEpochs)
+		if err != nil {
+			slog.Error("walrus upload failed", "id", id, "error", err)
+			h.videos.SetFailed(id, "upload to Walrus failed: "+err.Error())
+			return
+		}
+		previewBlobURL := h.walrus.BlobURL(previewBlobID)
+		h.videos.SetReady(id, previewBlobID, previewBlobURL, "", "")
+		slog.Info("preview uploaded to walrus (paid video, awaiting encrypted full blob)",
+			"id", id,
+			"preview_blob_id", previewBlobID,
+		)
+		return
+	}
+
+	// Free videos: upload both blobs as before
 	fastData, err := processor.EnsureFaststart(data, h.cfg.FFmpegPath)
 	if err != nil {
 		slog.Warn("faststart failed, uploading original", "id", id, "error", err)

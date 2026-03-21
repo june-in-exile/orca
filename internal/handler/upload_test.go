@@ -61,7 +61,7 @@ func TestUpload_InvalidFormat(t *testing.T) {
 	store := &mockStorer{storeFunc: func(data []byte, epochs int) (string, error) {
 		return "blob1", nil
 	}}
-	videos := model.NewVideoStore()
+	videos := mustNewVideoStore(t)
 	h := NewUpload(store, videos, newTestConfig())
 
 	req := createMultipartRequest(t, "video", "test.txt", []byte("not an mp4 file content here!!"), nil)
@@ -85,7 +85,7 @@ func TestUpload_ValidMP4_Accepted(t *testing.T) {
 		n := callCount.Add(1)
 		return fmt.Sprintf("blob%d", n), nil
 	}}
-	videos := model.NewVideoStore()
+	videos := mustNewVideoStore(t)
 	h := NewUpload(store, videos, newTestConfig())
 
 	req := createMultipartRequest(t, "video", "test.mp4", mp4Data, map[string]string{
@@ -121,7 +121,7 @@ func TestUpload_InvalidPrice(t *testing.T) {
 	store := &mockStorer{storeFunc: func(data []byte, epochs int) (string, error) {
 		return "blob1", nil
 	}}
-	videos := model.NewVideoStore()
+	videos := mustNewVideoStore(t)
 	h := NewUpload(store, videos, newTestConfig())
 
 	req := createMultipartRequest(t, "video", "test.mp4", mp4Data, map[string]string{
@@ -140,7 +140,7 @@ func TestUpload_MissingFile(t *testing.T) {
 	store := &mockStorer{storeFunc: func(data []byte, epochs int) (string, error) {
 		return "blob1", nil
 	}}
-	videos := model.NewVideoStore()
+	videos := mustNewVideoStore(t)
 	h := NewUpload(store, videos, newTestConfig())
 
 	req := httptest.NewRequest(http.MethodPost, "/api/upload", nil)

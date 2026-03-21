@@ -1,4 +1,5 @@
 storage/
+data/
 bin/
 *.mp4
 *.ts

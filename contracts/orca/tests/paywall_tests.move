@@ -188,4 +188,86 @@ module orca::paywall_tests {
 
         ts::end(scenario);
     }
+
+    #[test]
+    fun test_update_full_blob_id() {
+        let mut scenario = ts::begin(CREATOR);
+
+        // Create video with empty full_blob_id
+        ts::next_tx(&mut scenario, CREATOR);
+        {
+            let ctx = ts::ctx(&mut scenario);
+            paywall::create_video(
+                PRICE,
+                string::utf8(b"preview_blob_abc"),
+                string::utf8(b""),
+                ctx,
+            );
+        };
+
+        // Creator updates full_blob_id
+        ts::next_tx(&mut scenario, CREATOR);
+        {
+            let mut video = ts::take_shared<Video>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+            paywall::update_full_blob_id(
+                &mut video,
+                string::utf8(b"encrypted_full_blob"),
+                ctx,
+            );
+            assert!(paywall::video_full_blob_id(&video) == &string::utf8(b"encrypted_full_blob"));
+            ts::return_shared(video);
+        };
+
+        ts::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = paywall::ENotCreator)]
+    fun test_update_full_blob_id_not_creator() {
+        let mut scenario = ts::begin(CREATOR);
+        create_test_video(&mut scenario);
+
+        // Non-creator tries to update
+        ts::next_tx(&mut scenario, BUYER);
+        {
+            let mut video = ts::take_shared<Video>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+            paywall::update_full_blob_id(
+                &mut video,
+                string::utf8(b"hacked_blob"),
+                ctx,
+            );
+            ts::return_shared(video);
+        };
+
+        ts::end(scenario);
+    }
+
+    #[test]
+    fun test_purchase_and_transfer() {
+        let mut scenario = ts::begin(CREATOR);
+        create_test_video(&mut scenario);
+
+        ts::next_tx(&mut scenario, BUYER);
+        {
+            let video = ts::take_shared<Video>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+            let payment = coin::mint_for_testing<SUI>(PRICE, ctx);
+            paywall::purchase_and_transfer(&video, payment, ctx);
+            ts::return_shared(video);
+        };
+
+        // Verify buyer received AccessPass
+        ts::next_tx(&mut scenario, BUYER);
+        {
+            let pass = ts::take_from_sender<AccessPass>(&scenario);
+            let video = ts::take_shared<Video>(&scenario);
+            assert!(paywall::access_pass_video_id(&pass) == object::id(&video));
+            ts::return_to_sender(&scenario, pass);
+            ts::return_shared(video);
+        };
+
+        ts::end(scenario);
+    }
 }

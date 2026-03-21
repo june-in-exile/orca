@@ -19,6 +19,7 @@ type Config struct {
 	PreviewDuration  int
 	SuiRPCURL        string
 	PaywallPackageID string
+	DataDir          string
 }
 
 func Load() (*Config, error) {
@@ -30,6 +31,7 @@ func Load() (*Config, error) {
 		WalrusPublisher:  envOrDefault("ORCA_WALRUS_PUBLISHER_URL", "https://publisher.walrus-testnet.walrus.space"),
 		WalrusAggregator: envOrDefault("ORCA_WALRUS_AGGREGATOR_URL", "https://aggregator.walrus-testnet.walrus.space"),
 		WalrusEpochs:     5,
+		DataDir:          envOrDefault("ORCA_DATA_DIR", "data"),
 		FFmpegPath:       envOrDefault("ORCA_FFMPEG_PATH", "ffmpeg"),
 		FFprobePath:      envOrDefault("ORCA_FFPROBE_PATH", "ffprobe"),
 		PreviewDuration:  10,

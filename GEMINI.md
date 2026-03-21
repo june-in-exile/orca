@@ -38,4 +38,3 @@ Orca is a **video-native decentralized storage infrastructure** for Sui. It is t
 - `ORCA_WALRUS_PUBLISHER_URL`: Walrus publisher endpoint.
 - `ORCA_WALRUS_AGGREGATOR_URL`: Walrus aggregator endpoint.
 - `ORCA_WALRUS_EPOCHS`: Number of epochs to store blobs on Walrus.
-- `ORCA_API_KEY`: Auth for management APIs.

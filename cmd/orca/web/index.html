@@ -480,8 +480,8 @@
         <div class="paywall-overlay" id="paywall-overlay" style="display: none;">
           <div class="paywall-label">Preview ended</div>
           <div class="paywall-price" id="paywall-price"></div>
-          <button class="btn" id="paywall-unlock-btn" onclick="playFull()">Play Full Video</button>
-          <div class="paywall-label" style="font-size: 0.75rem; margin-top: 0.5rem;">In Phase 2, this will require payment via Seal</div>
+          <button class="btn" id="paywall-unlock-btn" onclick="purchaseAndPlay()">Purchase & Unlock</button>
+          <div class="paywall-label" id="paywall-hint" style="font-size: 0.75rem; margin-top: 0.5rem;"></div>
         </div>
         <div id="chain-status" style="display:none; margin-top: 0.75rem; padding: 0.75rem 1rem; background: var(--surface); border-radius: 8px; font-size: 0.85rem;">
         </div>
@@ -506,6 +506,15 @@
     let Transaction = null;
     let signAndExecuteTransaction = null;
     let paywallPackageId = null;
+    let sealClient = null;
+    let SealClientClass = null;
+    let SessionKeyClass = null;
+    let EncryptedObjectClass = null;
+    let fromHex = null;
+    let toHex = null;
+    let walrusPublisherUrl = null;
+    let walrusAggregatorUrl = null;
+    let walrusEpochs = 5;
 
     function findSlushWallet() {
       return discoveredWallets.find(w => w.name.toLowerCase().includes('slush'));
@@ -517,18 +526,22 @@
         if (res.ok) {
           const cfg = await res.json();
           paywallPackageId = cfg.paywall_package_id || null;
+          return cfg;
         }
       } catch (_) {}
+      return {};
     }
 
     async function initWallet() {
       try {
-        const [slushMod, walletMod, suiMod, txMod, walletStdMod, configResult] = await Promise.all([
+        const [slushMod, walletMod, suiMod, txMod, walletStdMod, sealMod, utilsMod, configResult] = await Promise.all([
           import('https://esm.sh/@mysten/slush-wallet@1.0.3?bundle'),
           import('https://esm.sh/@wallet-standard/app@1.1.0?bundle'),
           import('https://esm.sh/@mysten/sui@1.21.1/client?bundle'),
           import('https://esm.sh/@mysten/sui@1.21.1/transactions?bundle'),
-          import('https://esm.sh/@mysten/wallet-standard@0.13.9?bundle'),
+          import('https://esm.sh/@mysten/wallet-standard@0.20.1?bundle'),
+          import('https://esm.sh/@mysten/seal@0.4.0?bundle'),
+          import('https://esm.sh/@mysten/sui@1.21.1/utils?bundle'),
           fetchAppConfig(),
         ]);
 
@@ -539,6 +552,26 @@
         signAndExecuteTransaction = walletStdMod.signAndExecuteTransaction;
 
         suiClient = new SuiClient({ url: getFullnodeUrl('testnet') });
+
+        // Seal SDK setup
+        SealClientClass = sealMod.SealClient;
+        SessionKeyClass = sealMod.SessionKey;
+        EncryptedObjectClass = sealMod.EncryptedObject;
+        fromHex = utilsMod.fromHex;
+        toHex = utilsMod.toHex;
+        walrusPublisherUrl = configResult.walrus_publisher_url || '';
+        walrusAggregatorUrl = configResult.walrus_aggregator_url || '';
+
+        sealClient = new SealClientClass({
+          suiClient,
+          serverConfigs: [{
+            objectId: '0xb012378c9f3799fb5b1a7083da74a4069e3c3f1c93de0b27212a5799ce1e1e98',
+            weight: 1,
+            aggregatorUrl: 'https://seal-aggregator-testnet.mystenlabs.com',
+          }],
+          verifyKeyServers: false,
+        });
+
         window._walletStandard = { getWallets, SuiClient, getFullnodeUrl, suiClient };
 
         const { get, on } = getWallets();
@@ -565,7 +598,7 @@
         unsubscribeWalletEvents = () => { unsubRegister(); unsubUnregister(); };
 
         registerSlushWallet('Orca Video Streaming', {
-          origin: 'https://slush.app',
+          origin: 'https://my.slush.app',
         });
 
         const savedAddr = sessionStorage.getItem('orca_wallet_addr');
@@ -573,6 +606,7 @@
           await autoReconnect();
         }
       } catch (err) {
+        console.error('Wallet init failed:', err);
         const btn = document.getElementById('wallet-btn');
         btn.textContent = 'Wallet Unavailable';
         btn.disabled = true;
@@ -606,7 +640,7 @@
       try {
         const slush = findSlushWallet();
         if (!slush) {
-          window.open('https://slush.app', '_blank');
+          window.open('https://my.slush.app', '_blank');
           return;
         }
 
@@ -731,11 +765,197 @@
       return suiObjectId;
     }
 
+    // --- Seal Encryption & Decryption ---
+
+    // Encrypt full video with Seal and publish to Walrus + on-chain
+    async function encryptAndPublish(videoId, fileData, price, previewBlobId) {
+      if (!connectedWallet || !connectedAccount) throw new Error('Wallet not connected');
+      if (!sealClient || !fromHex || !toHex) throw new Error('Seal SDK not loaded');
+
+      // Step 1: Create Video on-chain with empty full_blob_id
+      const suiObjectId = await createVideoOnChain(videoId, price, previewBlobId, '');
+
+      // Step 2: Encrypt with Seal using Video object ID as namespace
+      const nonce = crypto.getRandomValues(new Uint8Array(5));
+      const policyObjectBytes = fromHex(suiObjectId.replace(/^0x/, ''));
+      const id = toHex(new Uint8Array([...policyObjectBytes, ...nonce]));
+
+      const { encryptedObject: encryptedBytes } = await sealClient.encrypt({
+        threshold: 1,
+        packageId: paywallPackageId,
+        id,
+        data: new Uint8Array(fileData),
+      });
+
+      // Step 3: Upload encrypted blob to Walrus
+      const walrusRes = await fetch(walrusPublisherUrl + '/v1/blobs?epochs=' + walrusEpochs, {
+        method: 'PUT',
+        body: encryptedBytes,
+      });
+      if (!walrusRes.ok) throw new Error('Walrus upload failed: ' + walrusRes.status);
+      const walrusData = await walrusRes.json();
+      const fullBlobId = (walrusData.newlyCreated && walrusData.newlyCreated.blobObject && walrusData.newlyCreated.blobObject.blobId)
+        || (walrusData.alreadyCertified && walrusData.alreadyCertified.blobId);
+      if (!fullBlobId) throw new Error('Failed to get blob ID from Walrus response');
+
+      // Step 4: Update Video on-chain with actual full_blob_id
+      const updateTx = new Transaction();
+      updateTx.moveCall({
+        target: paywallPackageId + '::paywall::update_full_blob_id',
+        arguments: [
+          updateTx.object(suiObjectId),
+          updateTx.pure.string(fullBlobId),
+        ],
+      });
+      await signAndExecuteTransaction(connectedWallet, {
+        transaction: updateTx,
+        account: connectedAccount,
+        chain: SUI_NETWORK,
+      });
+
+      // Step 5: Update backend with full blob ID
+      const backendRes = await fetch('/api/videos/' + encodeURIComponent(videoId) + '/full-blob', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ full_blob_id: fullBlobId }),
+      });
+      if (!backendRes.ok) throw new Error('Failed to update backend with full blob ID');
+
+      return { suiObjectId, fullBlobId };
+    }
+
+    // Find AccessPass owned by current wallet for a given video (follows pagination)
+    async function findAccessPass(videoSuiObjectId) {
+      if (!connectedAccount || !paywallPackageId) return null;
+      const accessPassType = paywallPackageId + '::paywall::AccessPass';
+      let cursor = null;
+      let hasNext = true;
+      while (hasNext) {
+        const result = await suiClient.getOwnedObjects({
+          owner: connectedAccount.address,
+          filter: { StructType: accessPassType },
+          options: { showContent: true },
+          cursor,
+        });
+        for (const obj of result.data) {
+          if (obj.data && obj.data.content && obj.data.content.fields) {
+            if (obj.data.content.fields.video_id === videoSuiObjectId) {
+              return obj.data.objectId;
+            }
+          }
+        }
+        hasNext = result.hasNextPage;
+        cursor = result.nextCursor;
+      }
+      return null;
+    }
+
+    // Purchase a video and mint AccessPass
+    async function purchaseVideo(video) {
+      if (!connectedWallet || !connectedAccount) throw new Error('Wallet not connected');
+      if (!video.sui_object_id) throw new Error('Video not published on-chain');
+
+      const tx = new Transaction();
+      const [coin] = tx.splitCoins(tx.gas, [video.price]);
+      tx.moveCall({
+        target: paywallPackageId + '::paywall::purchase_and_transfer',
+        arguments: [
+          tx.object(video.sui_object_id),
+          coin,
+        ],
+      });
+
+      const result = await signAndExecuteTransaction(connectedWallet, {
+        transaction: tx,
+        account: connectedAccount,
+        chain: SUI_NETWORK,
+      });
+
+      await suiClient.waitForTransaction({ digest: result.digest });
+    }
+
+    // Decrypt and play encrypted full video
+    async function decryptAndPlay(video) {
+      if (!connectedWallet || !connectedAccount) throw new Error('Wallet not connected');
+      if (!sealClient || !SessionKeyClass || !EncryptedObjectClass) throw new Error('Seal SDK not loaded');
+
+      const videoEl = document.getElementById('video-player');
+      const paywallEl = document.getElementById('paywall-overlay');
+      const hintEl = document.getElementById('paywall-hint');
+
+      if (hintEl) hintEl.textContent = 'Decrypting video...';
+
+      // 1. Create SessionKey
+      const sessionKey = await SessionKeyClass.create({
+        address: connectedAccount.address,
+        packageId: paywallPackageId,
+        ttlMin: 10,
+        suiClient,
+      });
+
+      // 2. Sign personal message via wallet
+      const message = sessionKey.getPersonalMessage();
+      const signFeature = connectedWallet.features['sui:signPersonalMessage'];
+      if (!signFeature) throw new Error('Wallet does not support signPersonalMessage');
+      const signResult = await signFeature.signPersonalMessage({
+        message,
+        account: connectedAccount,
+      });
+      sessionKey.setPersonalMessageSignature(signResult.signature);
+
+      // 3. Fetch encrypted blob from Walrus
+      const encryptedRes = await fetch(video.full_blob_url);
+      if (!encryptedRes.ok) throw new Error('Failed to fetch encrypted blob');
+      const encryptedData = new Uint8Array(await encryptedRes.arrayBuffer());
+
+      // 4. Parse encrypted object to get the seal ID
+      const parsedEncrypted = EncryptedObjectClass.parse(encryptedData);
+      const sealId = parsedEncrypted.id;
+
+      // 5. Find user's AccessPass
+      const accessPassId = await findAccessPass(video.sui_object_id);
+      if (!accessPassId) throw new Error('No AccessPass found for this video');
+
+      // 6. Build seal_approve transaction
+      const tx = new Transaction();
+      tx.moveCall({
+        target: paywallPackageId + '::paywall::seal_approve',
+        arguments: [
+          tx.pure.vector('u8', Array.from(fromHex(toHex(sealId)))),
+          tx.object(accessPassId),
+          tx.object(video.sui_object_id),
+        ],
+      });
+      const txBytes = await tx.build({ client: suiClient, onlyTransactionKind: true });
+
+      // 7. Decrypt
+      const decryptedBytes = await sealClient.decrypt({
+        data: encryptedData,
+        sessionKey,
+        txBytes,
+      });
+
+      // 8. Create blob URL and play (revoke previous to avoid memory leak)
+      if (videoEl.src && videoEl.src.startsWith('blob:')) {
+        URL.revokeObjectURL(videoEl.src);
+      }
+      const blob = new Blob([decryptedBytes], { type: 'video/mp4' });
+      const blobUrl = URL.createObjectURL(blob);
+      videoEl.onended = null;
+      paywallEl.style.display = 'none';
+      videoEl.src = blobUrl;
+      videoEl.play().catch(() => {});
+    }
+
     window.walletConnect = connectWallet;
     window.isWalletConnected = () => !!connectedAccount;
     window.getWalletAddress = () => connectedAccount ? connectedAccount.address : null;
     window.createVideoOnChain = createVideoOnChain;
     window.getPaywallPackageId = () => paywallPackageId;
+    window.encryptAndPublish = encryptAndPublish;
+    window.findAccessPass = findAccessPass;
+    window.purchaseVideo = purchaseVideo;
+    window.decryptAndPlay = decryptAndPlay;
 
     initWallet();
   </script>
@@ -925,7 +1145,10 @@
       }
     });
 
-    function handleFile(file) {
+    // Pending encryption state for paid video uploads
+    let pendingEncryption = null;
+
+    async function handleFile(file) {
       if (!file.name.toLowerCase().endsWith('.mp4')) {
         showResult('error', 'Only MP4 files are accepted.');
         return;
@@ -944,13 +1167,20 @@
         formData.append('title', title);
       }
       const priceInput = document.getElementById('video-price').value;
+      let priceMist = 0;
       if (priceInput && parseFloat(priceInput) > 0) {
-        const priceMist = Math.round(parseFloat(priceInput) * 1_000_000_000);
+        priceMist = Math.round(parseFloat(priceInput) * 1_000_000_000);
         formData.append('price', priceMist.toString());
       }
       const walletAddr = window.getWalletAddress ? window.getWalletAddress() : null;
       if (walletAddr) {
         formData.append('creator', walletAddr);
+      }
+
+      // For paid videos, read file into memory before upload for later Seal encryption
+      let fileArrayBuffer = null;
+      if (priceMist > 0) {
+        fileArrayBuffer = await file.arrayBuffer();
       }
 
       const xhr = new XMLHttpRequest();
@@ -971,6 +1201,16 @@
           uploadFile.value = '';
           document.getElementById('video-title').value = '';
           document.getElementById('video-price').value = '';
+
+          // For paid videos, store pending encryption info
+          if (priceMist > 0 && fileArrayBuffer) {
+            pendingEncryption = {
+              videoId: data.id,
+              fileData: fileArrayBuffer,
+              price: priceMist,
+            };
+          }
+
           navigate('player', { id: data.id });
         } else {
           let msg = 'Upload failed.';
@@ -1011,30 +1251,104 @@
 
     function setupPreviewEndHandler(videoEl, video) {
       videoEl.onended = null;
-      if (video.price > 0 && video.preview_blob_url !== video.full_blob_url) {
+      if (video.price > 0) {
         videoEl.onended = function() {
           const paywallEl = document.getElementById('paywall-overlay');
           const priceEl = document.getElementById('paywall-price');
+          const hintEl = document.getElementById('paywall-hint');
           priceEl.textContent = (video.price / 1_000_000_000).toFixed(2) + ' SUI';
+          const btn = document.getElementById('paywall-unlock-btn');
+          btn.disabled = false;
+          btn.textContent = 'Purchase & Unlock';
+          if (!window.isWalletConnected()) {
+            hintEl.textContent = 'Connect wallet to purchase';
+          } else if (!video.sui_object_id) {
+            hintEl.textContent = 'Video not yet published on-chain';
+          } else {
+            hintEl.textContent = '';
+          }
           paywallEl.style.display = 'flex';
         };
       }
     }
 
-    function startPlayback(video) {
+    async function startPlayback(video) {
       const videoEl = document.getElementById('video-player');
       const urlEl = document.getElementById('stream-url');
 
       currentVideo = video;
 
+      // Check if there's a pending encryption for this video (just uploaded paid video)
+      if (pendingEncryption && pendingEncryption.videoId === video.id && video.price > 0 && !video.full_blob_id) {
+        urlEl.textContent = 'Encrypting and publishing full video...';
+        const chainEl = document.getElementById('chain-status');
+        if (chainEl) {
+          chainEl.style.display = 'block';
+          chainEl.innerHTML = '<span style="color:var(--warning);">Encrypting & publishing to Walrus + Sui...</span>';
+        }
+
+        // Play preview while encrypting
+        videoEl.src = video.preview_blob_url;
+        videoEl.play().catch(() => {});
+
+        try {
+          if (!window.isWalletConnected()) {
+            throw new Error('Wallet must be connected to encrypt paid videos');
+          }
+          const result = await window.encryptAndPublish(
+            pendingEncryption.videoId,
+            pendingEncryption.fileData,
+            pendingEncryption.price,
+            video.preview_blob_id,
+          );
+          pendingEncryption = null;
+          // Refresh video data
+          const res = await fetch('/api/status/' + encodeURIComponent(video.id));
+          if (res.ok) {
+            const updated = await res.json();
+            currentVideo = updated;
+            updateChainStatus(updated);
+            setupPreviewEndHandler(videoEl, updated);
+            urlEl.textContent = updated.preview_blob_url;
+          }
+        } catch (err) {
+          pendingEncryption = null;
+          if (chainEl) {
+            chainEl.innerHTML = '<span style="color:var(--error);">Encryption failed: ' +
+              err.message.replace(/</g, '&lt;') + '</span>';
+          }
+        }
+        return;
+      }
+
+      // Free videos: play full directly
       if (video.price === 0 && video.full_blob_url) {
         urlEl.textContent = video.full_blob_url;
         videoEl.src = video.full_blob_url;
-      } else {
-        urlEl.textContent = video.preview_blob_url;
-        videoEl.src = video.preview_blob_url;
-        setupPreviewEndHandler(videoEl, video);
+        videoEl.play().catch(() => {});
+        updateChainStatus(video);
+        return;
       }
+
+      // Paid video with AccessPass: auto-decrypt
+      if (video.price > 0 && video.encrypted && video.sui_object_id && window.isWalletConnected()) {
+        try {
+          const passId = await window.findAccessPass(video.sui_object_id);
+          if (passId) {
+            urlEl.textContent = 'Decrypting full video...';
+            await window.decryptAndPlay(video);
+            updateChainStatus(video);
+            return;
+          }
+        } catch (_) {
+          // Fall through to preview playback
+        }
+      }
+
+      // Default: play preview, show paywall on end
+      urlEl.textContent = video.preview_blob_url;
+      videoEl.src = video.preview_blob_url;
+      setupPreviewEndHandler(videoEl, video);
       videoEl.play().catch(() => {});
 
       updateChainStatus(video);
@@ -1045,73 +1359,59 @@
       if (!chainEl) return;
 
       if (video.sui_object_id) {
-        chainEl.style.display = 'block';
-        chainEl.innerHTML = '<span style="color:var(--success);">On-chain</span> <span style="font-family:monospace; color:var(--text-muted); font-size:0.75rem;">' +
+        let statusHtml = '<span style="color:var(--success);">On-chain</span> <span style="font-family:monospace; color:var(--text-muted); font-size:0.75rem;">' +
           video.sui_object_id.slice(0, 10) + '...' + video.sui_object_id.slice(-4) + '</span>';
+        if (video.encrypted) {
+          statusHtml += ' <span style="color:var(--accent); font-size:0.75rem;">Seal encrypted</span>';
+        }
+        chainEl.style.display = 'block';
+        chainEl.innerHTML = statusHtml;
         return;
       }
 
-      if (video.price > 0 && window.isWalletConnected() && window.getPaywallPackageId()) {
+      // Paid videos without sui_object_id: encryption pending (auto-published during encrypt flow)
+      if (video.price > 0 && !video.full_blob_id) {
         chainEl.style.display = 'block';
-        chainEl.innerHTML = '<button class="btn btn-sm" id="publish-chain-btn" onclick="publishToChain()">Publish to Sui</button>' +
-          ' <span style="color:var(--text-muted); font-size:0.8rem;">Create on-chain Video object for paywall</span>';
-      } else if (video.price > 0 && !video.sui_object_id) {
+        chainEl.innerHTML = '<span style="color:var(--warning);">Awaiting Seal encryption & on-chain publish</span>';
+      } else if (video.price > 0) {
         chainEl.style.display = 'block';
-        if (!window.getPaywallPackageId || !window.getPaywallPackageId()) {
-          chainEl.innerHTML = '<span style="color:var(--text-muted);">Contract not configured (set ORCA_PAYWALL_PACKAGE_ID)</span>';
-        } else {
-          chainEl.innerHTML = '<span style="color:var(--text-muted);">Connect wallet to publish on-chain</span>';
-        }
+        chainEl.innerHTML = '<span style="color:var(--text-muted);">Connect wallet to publish on-chain</span>';
       } else {
         chainEl.style.display = 'none';
       }
     }
 
-    async function publishToChain() {
+    // publishToChain removed — paid videos auto-publish during encrypt flow
+
+    async function purchaseAndPlay() {
       if (!currentVideo) return;
-      const chainEl = document.getElementById('chain-status');
-      const btn = document.getElementById('publish-chain-btn');
-
-      if (btn) {
-        btn.disabled = true;
-        btn.textContent = 'Signing...';
-      }
-
-      try {
-        const suiObjectId = await window.createVideoOnChain(
-          currentVideo.id,
-          currentVideo.price,
-          currentVideo.preview_blob_id,
-          currentVideo.full_blob_id
-        );
-        currentVideo.sui_object_id = suiObjectId;
-        updateChainStatus(currentVideo);
-      } catch (err) {
-        chainEl.textContent = '';
-        const errSpan = document.createElement('span');
-        errSpan.style.color = 'var(--error)';
-        errSpan.textContent = 'Failed: ' + err.message;
-        chainEl.appendChild(errSpan);
-        const retryBtn = document.createElement('button');
-        retryBtn.className = 'btn btn-sm';
-        retryBtn.style.marginLeft = '0.5rem';
-        retryBtn.textContent = 'Retry';
-        retryBtn.addEventListener('click', publishToChain);
-        chainEl.appendChild(retryBtn);
-      }
-    }
-
-    function playFull() {
-      if (!currentVideo) return;
-      const videoEl = document.getElementById('video-player');
-      const urlEl = document.getElementById('stream-url');
+      const btn = document.getElementById('paywall-unlock-btn');
+      const hintEl = document.getElementById('paywall-hint');
       const paywallEl = document.getElementById('paywall-overlay');
 
-      paywallEl.style.display = 'none';
-      videoEl.onended = null;
-      urlEl.textContent = currentVideo.full_blob_url;
-      videoEl.src = currentVideo.full_blob_url;
-      videoEl.play().catch(() => {});
+      if (!window.isWalletConnected()) {
+        window.walletConnect();
+        return;
+      }
+
+      if (!currentVideo.sui_object_id) {
+        if (hintEl) hintEl.textContent = 'Video not published on-chain yet';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Purchasing...';
+      if (hintEl) hintEl.textContent = '';
+
+      try {
+        await window.purchaseVideo(currentVideo);
+        btn.textContent = 'Decrypting...';
+        await window.decryptAndPlay(currentVideo);
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'Purchase & Unlock';
+        if (hintEl) hintEl.textContent = 'Failed: ' + err.message;
+      }
     }
 
     async function checkAndPlay(id, generation) {

@@ -101,7 +101,6 @@ import (
 | Var | Default | Description |
 |-----|---------|-------------|
 | `ORCA_PORT` | `8080` | HTTP listen port |
-| `ORCA_API_KEY` | _(none)_ | Required for management endpoints |
 | `ORCA_WALRUS_PUBLISHER_URL` | `https://publisher.walrus-testnet.walrus.space` | Walrus Publisher API |
 | `ORCA_WALRUS_AGGREGATOR_URL` | `https://aggregator.walrus-testnet.walrus.space` | Walrus Aggregator API |
 | `ORCA_WALRUS_EPOCHS` | `1` | Default storage duration in epochs |
