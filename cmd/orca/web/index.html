@@ -540,7 +540,7 @@
           import('https://esm.sh/@mysten/sui@1.21.1/client?bundle'),
           import('https://esm.sh/@mysten/sui@1.21.1/transactions?bundle'),
           import('https://esm.sh/@mysten/wallet-standard@0.20.1?bundle'),
-          import('https://esm.sh/@mysten/seal@1.1.1?bundle'),
+          import('https://esm.sh/@mysten/seal@0.4.0?bundle'),
           import('https://esm.sh/@mysten/sui@1.21.1/utils?bundle'),
           fetchAppConfig(),
         ]);
@@ -564,11 +564,9 @@
 
         sealClient = new SealClientClass({
           suiClient,
-          serverConfigs: [{
-            objectId: '0xb012378c9f3799fb5b1a7083da74a4069e3c3f1c93de0b27212a5799ce1e1e98',
-            weight: 1,
-            aggregatorUrl: 'https://seal-aggregator-testnet.mystenlabs.com',
-          }],
+          serverObjectIds: [
+            '0xb012378c9f3799fb5b1a7083da74a4069e3c3f1c93de0b27212a5799ce1e1e98',
+          ],
           verifyKeyServers: false,
         });
 
@@ -886,11 +884,10 @@
       if (hintEl) hintEl.textContent = 'Decrypting video...';
 
       // 1. Create SessionKey
-      const sessionKey = await SessionKeyClass.create({
+      const sessionKey = new SessionKeyClass({
         address: connectedAccount.address,
         packageId: paywallPackageId,
         ttlMin: 10,
-        suiClient,
       });
 
       // 2. Sign personal message via wallet
