@@ -1,8 +1,8 @@
-# Orca Project Context
+# PayLock Project Context
 
 ## Project Overview
 
-Orca is a **video-native decentralized storage infrastructure** for Sui. It is transitioning from a v1 video-native middleware (local processing/streaming) to a v2 architecture centered around **Walrus** (decentralized storage) and **Seal** (access control).
+PayLock is a **video-native decentralized storage infrastructure** for Sui. It is transitioning from a v1 video-native middleware (local processing/streaming) to a v2 architecture centered around **Walrus** (decentralized storage) and **Seal** (access control).
 
 ## Technologies
 
@@ -10,7 +10,7 @@ Orca is a **video-native decentralized storage infrastructure** for Sui. It is t
 - **Storage**: Walrus (Testnet)
 - **Video Processing**: FFmpeg (temporarily disabled during v2 migration)
 - **Architecture**:
-  - `cmd/orca`: Server entry point.
+  - `cmd/paylock`: Server entry point.
   - `internal/handler`: HTTP handlers (Upload/Status/Videos). Now integrates with Walrus.
   - `internal/walrus`: Client for Walrus Publisher and Aggregator.
   - `internal/model`: In-memory state for video metadata and Walrus Blob IDs.
@@ -35,6 +35,6 @@ Orca is a **video-native decentralized storage infrastructure** for Sui. It is t
 
 ## Environment Variables
 
-- `ORCA_WALRUS_PUBLISHER_URL`: Walrus publisher endpoint.
-- `ORCA_WALRUS_AGGREGATOR_URL`: Walrus aggregator endpoint.
-- `ORCA_WALRUS_EPOCHS`: Number of epochs to store blobs on Walrus.
+- `PAYLOCK_WALRUS_PUBLISHER_URL`: Walrus publisher endpoint.
+- `PAYLOCK_WALRUS_AGGREGATOR_URL`: Walrus aggregator endpoint.
+- `PAYLOCK_WALRUS_EPOCHS`: Number of epochs to store blobs on Walrus.

@@ -1,4 +1,4 @@
-module orca::paywall {
+module paylock::paywall {
     use sui::coin::{Self, Coin};
     use sui::sui::SUI;
     use sui::transfer;

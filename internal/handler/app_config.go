@@ -3,7 +3,7 @@ package handler
 import (
 	"net/http"
 
-	"github.com/anthropics/orca/internal/config"
+	"github.com/anthropics/paylock/internal/config"
 )
 
 type AppConfig struct {

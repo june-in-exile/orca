@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/anthropics/orca/internal/config"
-	"github.com/anthropics/orca/internal/model"
-	"github.com/anthropics/orca/internal/processor"
+	"github.com/anthropics/paylock/internal/config"
+	"github.com/anthropics/paylock/internal/model"
+	"github.com/anthropics/paylock/internal/processor"
 )
 
 // Storer abstracts Walrus blob storage for testability.

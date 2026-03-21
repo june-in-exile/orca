@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Orca - Video Streaming</title>
+  <title>PayLock - Video Streaming</title>
   <style>
     :root {
       --bg: #000000;
@@ -660,7 +660,7 @@
               discoveredWallets.push(w);
             }
           }
-          const savedAddr = sessionStorage.getItem('orca_wallet_addr');
+          const savedAddr = sessionStorage.getItem('paylock_wallet_addr');
           if (savedAddr && !connectedWallet && findSlushWallet()) {
             autoReconnect();
           }
@@ -674,11 +674,11 @@
 
         unsubscribeWalletEvents = () => { unsubRegister(); unsubUnregister(); };
 
-        registerSlushWallet('Orca Video Streaming', {
+        registerSlushWallet('PayLock Video Streaming', {
           origin: 'https://my.slush.app',
         });
 
-        const savedAddr = sessionStorage.getItem('orca_wallet_addr');
+        const savedAddr = sessionStorage.getItem('paylock_wallet_addr');
         if (savedAddr && findSlushWallet()) {
           await autoReconnect();
         }
@@ -706,7 +706,7 @@
           if (typeof recheckAccessAfterConnect === 'function') recheckAccessAfterConnect();
         }
       } catch (_) {
-        sessionStorage.removeItem('orca_wallet_addr');
+        sessionStorage.removeItem('paylock_wallet_addr');
       }
     }
 
@@ -729,7 +729,7 @@
         if (result.accounts.length > 0) {
           connectedWallet = slush;
           connectedAccount = result.accounts[0];
-          sessionStorage.setItem('orca_wallet_addr', connectedAccount.address);
+          sessionStorage.setItem('paylock_wallet_addr', connectedAccount.address);
           await updateWalletUI();
           // Re-check AccessPass for current video after wallet connects
           if (typeof recheckAccessAfterConnect === 'function') recheckAccessAfterConnect();
@@ -752,7 +752,7 @@
       }
       connectedWallet = null;
       connectedAccount = null;
-      sessionStorage.removeItem('orca_wallet_addr');
+      sessionStorage.removeItem('paylock_wallet_addr');
 
       const btn = document.getElementById('wallet-btn');
       btn.textContent = 'Connect Wallet';

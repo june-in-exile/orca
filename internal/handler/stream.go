@@ -3,7 +3,7 @@ package handler
 import (
 	"net/http"
 
-	"github.com/anthropics/orca/internal/model"
+	"github.com/anthropics/paylock/internal/model"
 )
 
 type Stream struct {

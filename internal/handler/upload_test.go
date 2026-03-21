@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/anthropics/orca/internal/config"
-	"github.com/anthropics/orca/internal/model"
+	"github.com/anthropics/paylock/internal/config"
+	"github.com/anthropics/paylock/internal/model"
 )
 
 type mockStorer struct {

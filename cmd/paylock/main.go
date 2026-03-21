@@ -11,12 +11,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/anthropics/orca/internal/config"
-	"github.com/anthropics/orca/internal/handler"
-	"github.com/anthropics/orca/internal/middleware"
-	"github.com/anthropics/orca/internal/model"
-	"github.com/anthropics/orca/internal/processor"
-	"github.com/anthropics/orca/internal/walrus"
+	"github.com/anthropics/paylock/internal/config"
+	"github.com/anthropics/paylock/internal/handler"
+	"github.com/anthropics/paylock/internal/middleware"
+	"github.com/anthropics/paylock/internal/model"
+	"github.com/anthropics/paylock/internal/processor"
+	"github.com/anthropics/paylock/internal/walrus"
 )
 
 //go:embed web
@@ -89,7 +89,7 @@ func main() {
 	defer stop()
 
 	go func() {
-		slog.Info("orca server starting",
+		slog.Info("paylock server starting",
 			"port", cfg.Port,
 			"walrus_publisher", cfg.WalrusPublisher,
 			"walrus_aggregator", cfg.WalrusAggregator,

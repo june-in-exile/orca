@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"sort"
 
-	"github.com/anthropics/orca/internal/model"
+	"github.com/anthropics/paylock/internal/model"
 )
 
 type Videos struct {

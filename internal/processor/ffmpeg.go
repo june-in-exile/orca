@@ -28,7 +28,7 @@ func ExtractPreview(data []byte, durationSec int, ffmpegPath string) ([]byte, er
 	}
 	defer removeTempFile(inputFile)
 
-	outputFile, err := createTempOutputPath("orca-preview-*.mp4")
+	outputFile, err := createTempOutputPath("paylock-preview-*.mp4")
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +42,7 @@ func ExtractPreview(data []byte, durationSec int, ffmpegPath string) ([]byte, er
 }
 
 func writeTempInput(data []byte) (string, error) {
-	f, err := os.CreateTemp("", "orca-input-*.mp4")
+	f, err := os.CreateTemp("", "paylock-input-*.mp4")
 	if err != nil {
 		return "", fmt.Errorf("create temp input file: %w", err)
 	}
@@ -123,7 +123,7 @@ func EnsureFaststart(data []byte, ffmpegPath string) ([]byte, error) {
 	}
 	defer removeTempFile(inputFile)
 
-	outputFile, err := createTempOutputPath("orca-faststart-*.mp4")
+	outputFile, err := createTempOutputPath("paylock-faststart-*.mp4")
 	if err != nil {
 		return nil, err
 	}

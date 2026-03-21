@@ -4,7 +4,7 @@ Instructions for agentic coding agents working in this repository.
 
 ## Project Overview
 
-Orca is a **decentralized video storage infrastructure** for Sui. It manages video uploads to **Walrus** and provides a redirection layer for streaming.
+PayLock is a **decentralized video storage infrastructure** for Sui. It manages video uploads to **Walrus** and provides a redirection layer for streaming.
 
 **Current State (v2 Alpha):**
 
@@ -15,8 +15,8 @@ Orca is a **decentralized video storage infrastructure** for Sui. It manages vid
 ## Build Commands
 
 ```bash
-make run          # Run dev server (go run ./cmd/orca)
-make build        # Compile to bin/orca
+make run          # Run dev server (go run ./cmd/paylock)
+make build        # Compile to bin/paylock
 make test         # Run all tests with race detector and coverage
 make lint         # go vet ./...
 make clean        # Remove bin/ and temporary build artifacts
@@ -70,7 +70,7 @@ import (
 
     "github.com/joho/godotenv"
 
-    "github.com/anthropics/orca/internal/walrus"
+    "github.com/anthropics/paylock/internal/walrus"
 )
 ```
 
@@ -100,16 +100,16 @@ import (
 
 | Var | Default | Description |
 |-----|---------|-------------|
-| `ORCA_PORT` | `8080` | HTTP listen port |
-| `ORCA_WALRUS_PUBLISHER_URL` | `https://publisher.walrus-testnet.walrus.space` | Walrus Publisher API |
-| `ORCA_WALRUS_AGGREGATOR_URL` | `https://aggregator.walrus-testnet.walrus.space` | Walrus Aggregator API |
-| `ORCA_WALRUS_EPOCHS` | `1` | Default storage duration in epochs |
-| `ORCA_MAX_FILE_SIZE_MB` | `500` | Upload size limit in MB |
+| `PAYLOCK_PORT` | `8080` | HTTP listen port |
+| `PAYLOCK_WALRUS_PUBLISHER_URL` | `https://publisher.walrus-testnet.walrus.space` | Walrus Publisher API |
+| `PAYLOCK_WALRUS_AGGREGATOR_URL` | `https://aggregator.walrus-testnet.walrus.space` | Walrus Aggregator API |
+| `PAYLOCK_WALRUS_EPOCHS` | `1` | Default storage duration in epochs |
+| `PAYLOCK_MAX_FILE_SIZE_MB` | `500` | Upload size limit in MB |
 
 ## Directory Structure
 
 ```
-cmd/orca/main.go          — Entry point; wires all handlers and clients
+cmd/paylock/main.go          — Entry point; wires all handlers and clients
 internal/config/          — Environment loading and validation
 internal/model/           — Data models (Video, VideoStore)
 internal/walrus/          — Walrus Publisher/Aggregator client

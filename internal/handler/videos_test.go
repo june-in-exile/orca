@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/anthropics/orca/internal/model"
+	"github.com/anthropics/paylock/internal/model"
 )
 
 func TestVideos_EmptyList(t *testing.T) {

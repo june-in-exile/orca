@@ -1,4 +1,4 @@
-module github.com/anthropics/orca
+module github.com/anthropics/paylock
 
 go 1.25.6
 

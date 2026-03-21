@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/anthropics/orca/internal/model"
+	"github.com/anthropics/paylock/internal/model"
 )
 
 type Delete struct {

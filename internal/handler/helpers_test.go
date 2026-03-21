@@ -3,7 +3,7 @@ package handler
 import (
 	"testing"
 
-	"github.com/anthropics/orca/internal/model"
+	"github.com/anthropics/paylock/internal/model"
 )
 
 func mustNewVideoStore(t *testing.T) *model.VideoStore {

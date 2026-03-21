@@ -1,10 +1,10 @@
 .PHONY: run build test lint clean
 
 run:
-	go run ./cmd/orca
+	go run ./cmd/paylock
 
 build:
-	go build -o bin/orca ./cmd/orca
+	go build -o bin/paylock ./cmd/paylock
 
 test:
 	go test ./... -v -race -cover

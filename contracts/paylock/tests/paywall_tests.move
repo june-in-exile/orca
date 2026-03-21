@@ -1,12 +1,12 @@
 #[test_only]
-module orca::paywall_tests {
+module paylock::paywall_tests {
     use sui::test_scenario::{Self as ts, Scenario};
     use sui::coin;
     use sui::sui::SUI;
     use sui::object;
     use std::string;
 
-    use orca::paywall::{Self, Video, AccessPass};
+    use paylock::paywall::{Self, Video, AccessPass};
 
     const CREATOR: address = @0xCAFE;
     const BUYER: address = @0xBEEF;

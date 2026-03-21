@@ -1,10 +1,10 @@
-# 🐋 Orca 開發者整合指南 (Developer Guide)
+# 🐋 PayLock 開發者整合指南 (Developer Guide)
 
-Orca 是一個為 Sui 生態系設計的 **影片原生去中心化儲存基礎設施**。它封裝了 Walrus 的複雜操作，並整合了 **Seal (加密控制)** 與 **Sui Move (付費牆)**，為開發者提供簡單的影片分發方案。
+PayLock 是一個為 Sui 生態系設計的 **影片原生去中心化儲存基礎設施**。它封裝了 Walrus 的複雜操作，並整合了 **Seal (加密控制)** 與 **Sui Move (付費牆)**，為開發者提供簡單的影片分發方案。
 
 ## 🚀 核心概念：雙重串流策略 (Dual-Stream Strategy)
 
-Orca 為每個影片提供兩種存取路徑，以平衡「傳播性」與「商業價值」：
+PayLock 為每個影片提供兩種存取路徑，以平衡「傳播性」與「商業價值」：
 
 | 資源類型 | API 端點 | 說明 | 權限控制 |
 | :--- | :--- | :--- | :--- |
@@ -35,7 +35,7 @@ curl -X POST http://localhost:8080/api/upload \
 
 ### 2. 連結鏈上 Paywall 物件
 
-上傳後，你需要將 Orca 的影片 ID 與 Sui 鏈上的 Paywall 物件進行綁定，以便處理支付邏輯。
+上傳後，你需要將 PayLock 的影片 ID 與 Sui 鏈上的 Paywall 物件進行綁定，以便處理支付邏輯。
 
 * **Endpoint**: `POST /api/set-sui-object`
 
@@ -43,7 +43,7 @@ curl -X POST http://localhost:8080/api/upload \
 curl -X POST http://localhost:8080/api/set-sui-object \
   -H "Content-Type: application/json" \
   -d '{
-    "id": "orca-video-uuid", 
+    "id": "paylock-video-uuid", 
     "suiObjectId": "0xYourPaywallObjectId"
   }'
 ```
@@ -56,7 +56,7 @@ curl -X POST http://localhost:8080/api/set-sui-object \
 
 ```html
 <!-- 1. 展示免費預覽 -->
-<video controls src="https://your-orca.com/api/stream/{id}"></video>
+<video controls src="https://your-paylock.com/api/stream/{id}"></video>
 
 <!-- 2. 購買按鈕 (呼叫 Sui Move 合約) -->
 <button onclick="purchaseVideo('0xYourPaywallObjectId')">

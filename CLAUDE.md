@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-make run          # Run dev server (go run ./cmd/orca)
-make build        # Compile to bin/orca
+make run          # Run dev server (go run ./cmd/paylock)
+make build        # Compile to bin/paylock
 make test         # Run all tests with race detector and coverage
 make lint         # go vet ./...
 make clean        # Remove bin/
@@ -19,21 +19,21 @@ go test ./internal/processor/... -run TestValidateMagicBytes -v
 
 | Var | Default | Description |
 |-----|---------|-------------|
-| `ORCA_PORT` | `8080` | HTTP listen port |
-| `ORCA_WALRUS_PUBLISHER_URL` | `https://publisher.walrus-testnet.walrus.space` | Walrus publisher endpoint |
-| `ORCA_WALRUS_AGGREGATOR_URL` | `https://aggregator.walrus-testnet.walrus.space` | Walrus aggregator endpoint |
-| `ORCA_WALRUS_EPOCHS` | `5` | Number of storage epochs to pay for |
-| `ORCA_DATA_DIR` | `data` | Local directory for persisted video metadata |
-| `ORCA_MAX_FILE_SIZE_MB` | `500` | Upload size limit in MB |
-| `ORCA_PAYWALL_PACKAGE_ID` | *(none)* | Deployed paywall Move package ID on Sui |
-| `ORCA_SUI_RPC_URL` | `https://fullnode.testnet.sui.io:443` | Sui JSON-RPC endpoint |
+| `PAYLOCK_PORT` | `8080` | HTTP listen port |
+| `PAYLOCK_WALRUS_PUBLISHER_URL` | `https://publisher.walrus-testnet.walrus.space` | Walrus publisher endpoint |
+| `PAYLOCK_WALRUS_AGGREGATOR_URL` | `https://aggregator.walrus-testnet.walrus.space` | Walrus aggregator endpoint |
+| `PAYLOCK_WALRUS_EPOCHS` | `5` | Number of storage epochs to pay for |
+| `PAYLOCK_DATA_DIR` | `data` | Local directory for persisted video metadata |
+| `PAYLOCK_MAX_FILE_SIZE_MB` | `500` | Upload size limit in MB |
+| `PAYLOCK_PAYWALL_PACKAGE_ID` | *(none)* | Deployed paywall Move package ID on Sui |
+| `PAYLOCK_SUI_RPC_URL` | `https://fullnode.testnet.sui.io:443` | Sui JSON-RPC endpoint |
 
 ## Architecture
 
-Orca is a video upload service that stores MP4 files on Walrus decentralized storage (Sui). It accepts MP4 uploads, validates them, uploads directly to Walrus, and serves them via the Walrus aggregator.
+PayLock is a video upload service that stores MP4 files on Walrus decentralized storage (Sui). It accepts MP4 uploads, validates them, uploads directly to Walrus, and serves them via the Walrus aggregator.
 
 ```
-cmd/orca/main.go          — wires all packages; route groups:
+cmd/paylock/main.go          — wires all packages; route groups:
                             POST /api/upload, GET /api/status/{id}
                             GET /api/videos, DELETE /api/videos/{id}
                             PUT /api/videos/{id}/sui-object, GET /api/config
@@ -41,7 +41,7 @@ cmd/orca/main.go          — wires all packages; route groups:
                             GET /stream/{id}                        → redirects to Walrus
 
 internal/config/          — env-based config
-internal/model/           — VideoStore (sync.RWMutex + JSON file persistence in ORCA_DATA_DIR)
+internal/model/           — VideoStore (sync.RWMutex + JSON file persistence in PAYLOCK_DATA_DIR)
 internal/walrus/          — Walrus HTTP client (Store, BlobURL)
 internal/processor/       — MP4 magic-byte validator + size validator
 internal/handler/         — HTTP handlers; upload validates then async uploads to Walrus
@@ -55,7 +55,7 @@ internal/middleware/      — CORS middleware
 - **Seal encryption (Phase 2)**: Full blob of paid videos is encrypted with `@mysten/seal` in the browser. The flow: create Video on-chain with empty full_blob_id → encrypt with Seal using Video object ID as namespace → upload encrypted blob to Walrus → update full_blob_id on-chain and backend.
 - **Purchase flow**: User pays via `purchase_and_transfer` → mints AccessPass → Seal SessionKey + `seal_approve` tx → decrypt encrypted blob in browser → play via blob URL.
 - **No local file storage**: Videos go directly to Walrus. No HLS segmentation.
-- **VideoStore persists to disk**: Video metadata is saved as `videos.json` in `ORCA_DATA_DIR` (default `data/`). Deleting the file only removes local records; Walrus blobs are unaffected.
+- **VideoStore persists to disk**: Video metadata is saved as `videos.json` in `PAYLOCK_DATA_DIR` (default `data/`). Deleting the file only removes local records; Walrus blobs are unaffected.
 - **Stream endpoint redirects**: `GET /stream/{id}` returns a 307 redirect to the Walrus aggregator blob URL.
 - **Only MP4 input is accepted**: Magic bytes check (`ftyp` at offset 4).
 - **Frontend uses native `<video>`**: No HLS.js dependency. The browser plays MP4 directly from the Walrus aggregator URL (or from decrypted blob URL for paid videos).
