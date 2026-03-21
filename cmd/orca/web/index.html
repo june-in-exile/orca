@@ -1543,8 +1543,10 @@
       if (!chainEl) return;
 
       if (video.sui_object_id) {
-        let statusHtml = '<span style="color:var(--success);">On-chain</span> <span style="font-family:monospace; color:var(--text-muted); font-size:0.75rem;">' +
-          video.sui_object_id.slice(0, 10) + '...' + video.sui_object_id.slice(-4) + '</span>';
+        const url = `https://suiscan.xyz/testnet/object/${video.sui_object_id}/tx-blocks`;
+        let statusHtml = '<span style="color:var(--success);">On-chain</span> ' +
+          `<a href="${url}" target="_blank" rel="noopener noreferrer" style="font-family:monospace; color:var(--accent); font-size:0.75rem; text-decoration:none; border-bottom:1px dashed var(--accent);">` +
+          video.sui_object_id.slice(0, 10) + '...' + video.sui_object_id.slice(-4) + '</a>';
         if (video.encrypted) {
           statusHtml += ' <span style="color:var(--accent); font-size:0.75rem;">Seal encrypted</span>';
         }
