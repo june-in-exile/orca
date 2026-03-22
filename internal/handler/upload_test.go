@@ -7,12 +7,12 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"sync/atomic"
 	"testing"
 
 	"github.com/anthropics/paylock/internal/config"
 	"github.com/anthropics/paylock/internal/model"
+	"github.com/anthropics/paylock/internal/testutil"
 )
 
 type mockStorer struct {
@@ -75,10 +75,7 @@ func TestUpload_InvalidFormat(t *testing.T) {
 }
 
 func TestUpload_ValidMP4_Accepted(t *testing.T) {
-	mp4Data, err := os.ReadFile("../../test.mp4")
-	if err != nil {
-		t.Fatalf("failed to read test.mp4: %v", err)
-	}
+	mp4Data := testutil.TestMP4(t)
 
 	var callCount atomic.Int32
 	store := &mockStorer{storeFunc: func(data []byte, epochs int) (string, error) {
@@ -113,10 +110,7 @@ func TestUpload_ValidMP4_Accepted(t *testing.T) {
 }
 
 func TestUpload_InvalidPrice(t *testing.T) {
-	mp4Data, err := os.ReadFile("../../test.mp4")
-	if err != nil {
-		t.Fatalf("failed to read test.mp4: %v", err)
-	}
+	mp4Data := testutil.TestMP4(t)
 
 	store := &mockStorer{storeFunc: func(data []byte, epochs int) (string, error) {
 		return "blob1", nil

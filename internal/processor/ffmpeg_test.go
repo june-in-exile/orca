@@ -2,15 +2,13 @@ package processor
 
 import (
 	"bytes"
-	"os"
 	"testing"
+
+	"github.com/anthropics/paylock/internal/testutil"
 )
 
 func TestExtractPreview_ValidMP4(t *testing.T) {
-	data, err := os.ReadFile("../../test.mp4")
-	if err != nil {
-		t.Fatalf("failed to read test.mp4: %v", err)
-	}
+	data := testutil.TestMP4(t)
 
 	preview, err := ExtractPreview(data, 2, "ffmpeg")
 	if err != nil {
@@ -52,10 +50,7 @@ func TestCheckFFmpeg_Invalid(t *testing.T) {
 }
 
 func TestEnsureFaststart_ValidMP4(t *testing.T) {
-	data, err := os.ReadFile("../../test.mp4")
-	if err != nil {
-		t.Fatalf("failed to read test.mp4: %v", err)
-	}
+	data := testutil.TestMP4(t)
 
 	output, err := EnsureFaststart(data, "ffmpeg")
 	if err != nil {
@@ -72,10 +67,7 @@ func TestEnsureFaststart_ValidMP4(t *testing.T) {
 }
 
 func TestEnsureFaststart_HasMoovFirst(t *testing.T) {
-	data, err := os.ReadFile("../../test.mp4")
-	if err != nil {
-		t.Fatalf("failed to read test.mp4: %v", err)
-	}
+	data := testutil.TestMP4(t)
 
 	output, err := EnsureFaststart(data, "ffmpeg")
 	if err != nil {
@@ -88,10 +80,7 @@ func TestEnsureFaststart_HasMoovFirst(t *testing.T) {
 }
 
 func TestExtractThumbnail_ValidMP4(t *testing.T) {
-	data, err := os.ReadFile("../../test.mp4")
-	if err != nil {
-		t.Fatalf("failed to read test.mp4: %v", err)
-	}
+	data := testutil.TestMP4(t)
 
 	thumb, err := ExtractThumbnail(data, "ffmpeg")
 	if err != nil {

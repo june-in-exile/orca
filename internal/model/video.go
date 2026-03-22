@@ -70,16 +70,16 @@ func (s *VideoStore) Create(id, title string, price uint64, creator string) *Vid
 		Encrypted: price > 0,
 	}
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.videos[id] = v
 	s.persist()
-	s.mu.Unlock()
 	return v
 }
 
 func (s *VideoStore) Get(id string) (*Video, bool) {
 	s.mu.RLock()
+	defer s.mu.RUnlock()
 	v, ok := s.videos[id]
-	s.mu.RUnlock()
 	if !ok {
 		return nil, false
 	}
@@ -89,6 +89,7 @@ func (s *VideoStore) Get(id string) (*Video, bool) {
 
 func (s *VideoStore) SetReady(id, thumbnailBlobID, thumbnailBlobURL, previewBlobID, previewBlobURL, fullBlobID, fullBlobURL string) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	if v, ok := s.videos[id]; ok {
 		v.Status = StatusReady
 		v.ThumbnailBlobID = thumbnailBlobID
@@ -99,7 +100,6 @@ func (s *VideoStore) SetReady(id, thumbnailBlobID, thumbnailBlobURL, previewBlob
 		v.FullBlobURL = fullBlobURL
 		s.persist()
 	}
-	s.mu.Unlock()
 }
 
 func (s *VideoStore) SetSuiObjectID(id, suiObjectID string) bool {
@@ -129,12 +129,12 @@ func (s *VideoStore) SetFullBlob(id, fullBlobID, fullBlobURL string) bool {
 
 func (s *VideoStore) SetFailed(id string, errMsg string) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	if v, ok := s.videos[id]; ok {
 		v.Status = StatusFailed
 		v.Error = errMsg
 		s.persist()
 	}
-	s.mu.Unlock()
 }
 
 func (s *VideoStore) Delete(id string) bool {

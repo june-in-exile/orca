@@ -225,9 +225,6 @@ uploadFile.addEventListener('change', function() {
   }
 });
 
-// Pending encryption state for paid video uploads
-let pendingEncryption = null;
-
 // Staged file waiting for user confirmation
 let stagedFile = null;
 const stagedFileEl = document.getElementById('staged-file');
@@ -289,6 +286,59 @@ window.cancelStaged = function() {
   updateUploadButton();
 };
 
+function sendUpload(formData, file) {
+  return new Promise(function(resolve, reject) {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/upload');
+
+    xhr.upload.addEventListener('progress', function(e) {
+      if (e.lengthComputable) {
+        const pct = Math.round((e.loaded / e.total) * 100);
+        progressFill.style.width = pct + '%';
+        progressText.textContent = 'Uploading ' + file.name + '... ' + pct + '%';
+      }
+    });
+
+    xhr.addEventListener('load', function() {
+      if (xhr.status === 202) {
+        resolve(JSON.parse(xhr.responseText));
+      } else {
+        let msg = 'Upload failed.';
+        try { msg = JSON.parse(xhr.responseText).error || msg; } catch(e) {}
+        reject(new Error(msg));
+      }
+    });
+
+    xhr.addEventListener('error', function() {
+      reject(new Error('Network error. Is the server running?'));
+    });
+
+    xhr.send(formData);
+  });
+}
+
+function pollUntilReady(id) {
+  return new Promise(function(resolve, reject) {
+    const interval = setInterval(async function() {
+      try {
+        const res = await fetch('/api/status/' + encodeURIComponent(id));
+        if (!res.ok) return;
+        const video = await res.json();
+        if (video.status === 'ready') {
+          clearInterval(interval);
+          resolve(video);
+        } else if (video.status === 'failed') {
+          clearInterval(interval);
+          reject(new Error(video.error || 'Upload failed'));
+        }
+      } catch (err) {
+        clearInterval(interval);
+        reject(err);
+      }
+    }, 2000);
+  });
+}
+
 async function confirmUpload() {
   if (!stagedFile) return;
   const file = stagedFile;
@@ -317,50 +367,7 @@ async function confirmUpload() {
     formData.append('creator', walletAddr);
   }
 
-  let fileArrayBuffer = null;
-  if (priceMist > 0) {
-    fileArrayBuffer = await file.arrayBuffer();
-  }
-
-  const xhr = new XMLHttpRequest();
-  xhr.open('POST', '/api/upload');
-
-  xhr.upload.addEventListener('progress', function(e) {
-    if (e.lengthComputable) {
-      const pct = Math.round((e.loaded / e.total) * 100);
-      progressFill.style.width = pct + '%';
-      progressText.textContent = 'Uploading ' + file.name + '... ' + pct + '%';
-    }
-  });
-
-  xhr.addEventListener('load', function() {
-    uploadProgress.style.display = 'none';
-    if (xhr.status === 202) {
-      const data = JSON.parse(xhr.responseText);
-      uploadFile.value = '';
-      document.getElementById('video-title').value = '';
-      document.getElementById('video-price').value = '';
-
-      if (priceMist > 0 && fileArrayBuffer) {
-        pendingEncryption = {
-          videoId: data.id,
-          fileData: fileArrayBuffer,
-          price: priceMist,
-        };
-      }
-
-      navigate('player', { id: data.id });
-    } else {
-      let msg = 'Upload failed.';
-      try { msg = JSON.parse(xhr.responseText).error || msg; } catch(e) {}
-      showResult('error', msg);
-    }
-  });
-
-  xhr.addEventListener('error', function() {
-    uploadProgress.style.display = 'none';
-    showResult('error', 'Network error. Is the server running?');
-  });
+  const fileArrayBuffer = priceMist > 0 ? await file.arrayBuffer() : null;
 
   stagedFile = null;
   if (stagedPreview.src) {
@@ -369,7 +376,36 @@ async function confirmUpload() {
   }
   updateUploadButton();
 
-  xhr.send(formData);
+  try {
+    const data = await sendUpload(formData, file);
+    uploadFile.value = '';
+    document.getElementById('video-title').value = '';
+    document.getElementById('video-price').value = '';
+
+    if (priceMist > 0 && fileArrayBuffer) {
+      if (!isWalletConnected()) {
+        throw new Error('Wallet must be connected to encrypt paid videos');
+      }
+
+      // Encrypt + upload full blob runs in parallel with backend's preview upload
+      progressText.textContent = 'Encrypting & uploading to Walrus + Sui...';
+      const mod = await loadWallet();
+      const [video, encResult] = await Promise.all([
+        pollUntilReady(data.id),
+        mod.encryptAndPublish(data.id, fileArrayBuffer, priceMist),
+      ]);
+
+      // Both done — update preview + full blob IDs on-chain in a single tx
+      progressText.textContent = 'Publishing blob IDs on-chain...';
+      await mod.updateBlobIds(encResult.suiObjectId, data.id, video.preview_blob_id, encResult.fullBlobId);
+    }
+
+    uploadProgress.style.display = 'none';
+    navigate('player', { id: data.id });
+  } catch (err) {
+    uploadProgress.style.display = 'none';
+    showResult('error', err.message);
+  }
 }
 
 function showResult(type, message) {
@@ -442,54 +478,19 @@ function setupPreviewEndHandler(videoEl, video) {
   }
 }
 
+function playPreview(videoEl, urlEl, video) {
+  urlEl.textContent = video.preview_blob_url;
+  videoEl.src = video.preview_blob_url;
+  videoEl.play().catch(function() {});
+}
+
 async function startPlayback(video) {
   const videoEl = document.getElementById('video-player');
   const urlEl = document.getElementById('stream-url');
 
   currentVideo = video;
 
-  if (pendingEncryption && pendingEncryption.videoId === video.id && video.price > 0 && !video.full_blob_id) {
-    urlEl.textContent = 'Encrypting and publishing full video...';
-    const chainEl = document.getElementById('chain-status');
-    if (chainEl) {
-      chainEl.style.display = 'block';
-      chainEl.innerHTML = '<span style="color:var(--warning);">Encrypting & publishing to Walrus + Sui...</span>';
-    }
-
-    videoEl.src = video.preview_blob_url;
-    videoEl.play().catch(function() {});
-
-    try {
-      if (!isWalletConnected()) {
-        throw new Error('Wallet must be connected to encrypt paid videos');
-      }
-      const mod = await loadWallet();
-      const result = await mod.encryptAndPublish(
-        pendingEncryption.videoId,
-        pendingEncryption.fileData,
-        pendingEncryption.price,
-        video.preview_blob_id,
-      );
-      pendingEncryption = null;
-      const res = await fetch('/api/status/' + encodeURIComponent(video.id));
-      if (res.ok) {
-        const updated = await res.json();
-        currentVideo = updated;
-        updateChainStatus(updated);
-        setupPreviewEndHandler(videoEl, updated);
-        urlEl.textContent = updated.preview_blob_url;
-      }
-    } catch (err) {
-      pendingEncryption = null;
-      if (chainEl) {
-        chainEl.innerHTML = '<span style="color:var(--error);">Encryption failed: ' +
-          err.message.replace(/</g, '&lt;') + '</span>';
-      }
-    }
-    return;
-  }
-
-  // Free videos: play full directly
+  // Free video: play full directly
   if (video.price === 0 && video.full_blob_url) {
     urlEl.textContent = video.full_blob_url;
     videoEl.src = video.full_blob_url;
@@ -502,25 +503,20 @@ async function startPlayback(video) {
   if (video.price > 0 && video.encrypted && video.sui_object_id && isWalletConnected()) {
     try {
       const mod = await loadWallet();
-      const passId = await mod.findAccessPass(video.sui_object_id);
-      if (passId) {
+      if (await mod.findAccessPass(video.sui_object_id)) {
         urlEl.textContent = 'Decrypting full video...';
         await mod.decryptAndPlay(video);
         updateChainStatus(video);
         return;
       }
     } catch (err) {
-      const hintEl = document.getElementById('paywall-hint');
-      if (hintEl) hintEl.textContent = 'Auto-decrypt failed: ' + err.message;
+      document.getElementById('paywall-hint').textContent = 'Auto-decrypt failed: ' + err.message;
     }
   }
 
   // Default: play preview, show paywall on end
-  urlEl.textContent = video.preview_blob_url;
-  videoEl.src = video.preview_blob_url;
+  playPreview(videoEl, urlEl, video);
   setupPreviewEndHandler(videoEl, video);
-  videoEl.play().catch(function() {});
-
   updateChainStatus(video);
 }
 

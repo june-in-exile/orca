@@ -281,11 +281,12 @@ export async function createVideoOnChain(videoId, price, previewBlobId, fullBlob
   return suiObjectId;
 }
 
-export async function encryptAndPublish(videoId, fileData, price, previewBlobId) {
+export async function encryptAndPublish(videoId, fileData, price) {
   if (!connectedWallet || !connectedAccount) throw new Error('Wallet not connected');
   if (!sealClient || !fromHex || !toHex) throw new Error('Seal SDK not loaded');
 
-  const suiObjectId = await createVideoOnChain(videoId, price, previewBlobId, '');
+  // Create Video on-chain with empty blob IDs to get the object ID for Seal encryption
+  const suiObjectId = await createVideoOnChain(videoId, price, '', '');
 
   const nonce = crypto.getRandomValues(new Uint8Array(5));
   const policyObjectBytes = fromHex(suiObjectId.replace(/^0x/, ''));
@@ -308,7 +309,20 @@ export async function encryptAndPublish(videoId, fileData, price, previewBlobId)
     || (walrusData.alreadyCertified && walrusData.alreadyCertified.blobId);
   if (!fullBlobId) throw new Error('Failed to get blob ID from Walrus response');
 
+  return { suiObjectId, fullBlobId };
+}
+
+export async function updateBlobIds(suiObjectId, videoId, previewBlobId, fullBlobId) {
+  if (!connectedWallet || !connectedAccount) throw new Error('Wallet not connected');
+
   const updateTx = new Transaction();
+  updateTx.moveCall({
+    target: paywallPackageId + '::paywall::update_preview_blob_id',
+    arguments: [
+      updateTx.object(suiObjectId),
+      updateTx.pure.string(previewBlobId),
+    ],
+  });
   updateTx.moveCall({
     target: paywallPackageId + '::paywall::update_full_blob_id',
     arguments: [
@@ -328,8 +342,6 @@ export async function encryptAndPublish(videoId, fileData, price, previewBlobId)
     body: JSON.stringify({ full_blob_id: fullBlobId }),
   });
   if (!backendRes.ok) throw new Error('Failed to update backend with full blob ID');
-
-  return { suiObjectId, fullBlobId };
 }
 
 export async function findAccessPass(videoSuiObjectId) {

@@ -68,6 +68,16 @@ module paylock::paywall {
         pass
     }
 
+    /// Creator updates the preview blob ID after Walrus upload.
+    public fun update_preview_blob_id(
+        video: &mut Video,
+        preview_blob_id: String,
+        ctx: &TxContext,
+    ) {
+        assert!(tx_context::sender(ctx) == video.creator, ENotCreator);
+        video.preview_blob_id = preview_blob_id;
+    }
+
     /// Creator updates the full blob ID after Seal encryption + Walrus upload.
     public fun update_full_blob_id(
         video: &mut Video,
