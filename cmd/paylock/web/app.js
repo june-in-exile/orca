@@ -447,7 +447,7 @@ let currentVideo = null;
 
 async function recheckAccessAfterConnect() {
   if (!currentVideo || currentView !== 'player') return;
-  if (currentVideo.price <= 0 || !currentVideo.encrypted || !currentVideo.sui_object_id) return;
+  if (currentVideo.price <= 0 || !currentVideo.encrypted || !currentVideo.sui_object_id || !currentVideo.full_blob_url) return;
   if (!isWalletConnected()) return;
 
   const videoEl = document.getElementById('video-player');
@@ -529,7 +529,7 @@ async function startPlayback(video) {
   }
 
   // Paid video with AccessPass: auto-decrypt
-  if (video.price > 0 && video.encrypted && video.sui_object_id && isWalletConnected()) {
+  if (video.price > 0 && video.encrypted && video.sui_object_id && video.full_blob_url && isWalletConnected()) {
     try {
       const mod = await loadWallet();
       if (await mod.findAccessPass(video.sui_object_id)) {
@@ -606,6 +606,13 @@ async function purchaseAndPlay() {
       accessPassId = await mod.purchaseVideo(currentVideo);
     }
     console.log("accessPassId: ", accessPassId);
+
+    if (!currentVideo.full_blob_url) {
+      if (hintEl) hintEl.textContent = 'Encrypted blob not available — the upload may have been interrupted';
+      btn.disabled = false;
+      btn.textContent = 'Purchase & Unlock';
+      return;
+    }
 
     btn.textContent = 'Decrypting...';
     await mod.decryptAndPlay(currentVideo, accessPassId);

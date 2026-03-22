@@ -407,6 +407,7 @@ export async function purchaseVideo(video) {
 export async function decryptAndPlay(video, knownAccessPassId) {
   if (!connectedWallet || !connectedAccount) throw new Error('Wallet not connected');
   if (!sealClient || !SessionKeyClass || !EncryptedObjectClass) throw new Error('Seal SDK not loaded');
+  if (!video.full_blob_url) throw new Error('Encrypted blob not available — upload may have failed');
 
   const videoEl = document.getElementById('video-player');
   const paywallEl = document.getElementById('paywall-overlay');
