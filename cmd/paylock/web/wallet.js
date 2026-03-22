@@ -373,15 +373,17 @@ export async function purchaseVideo(video) {
   if (!connectedWallet || !connectedAccount) throw new Error('Wallet not connected');
   if (!video.sui_object_id) throw new Error('Video not published on-chain');
 
+  const priceInMist = Math.round(video.price * 1_000_000_000);
   const tx = new Transaction();
-  const [coin] = tx.splitCoins(tx.gas, [video.price]);
+  const [paymentCoin] = tx.splitCoins(tx.gas, [priceInMist]);
   tx.moveCall({
     target: paywallPackageId + '::paywall::purchase_and_transfer',
     arguments: [
       tx.object(video.sui_object_id),
-      coin,
+      paymentCoin,
     ],
   });
+  tx.mergeCoins(tx.gas, [paymentCoin]);
 
   const result = await signAndExecuteTransaction(connectedWallet, {
     transaction: tx,
