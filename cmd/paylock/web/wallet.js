@@ -1,4 +1,13 @@
+import { walletState } from './state.js';
+
 const SUI_NETWORK = 'sui:testnet';
+
+// Suppress "Origin not allowed" errors from wallet browser extensions
+window.addEventListener('unhandledrejection', (e) => {
+  if (e.reason && typeof e.reason.message === 'string' && e.reason.message.includes('Origin not allowed')) {
+    e.preventDefault();
+  }
+});
 
 let connectedWallet = null;
 let connectedAccount = null;
@@ -14,18 +23,12 @@ let SessionKeyClass = null;
 let EncryptedObjectClass = null;
 let fromHex = null;
 let toHex = null;
-let walrusPublisherUrl = null;
-let walrusAggregatorUrl = null;
+let walrusPublisherUrl = '';
+let walrusAggregatorUrl = '';
 let walrusEpochs = 5;
 
-let onWalletConnectCallback = null;
-
-export function onWalletConnect(callback) {
-  onWalletConnectCallback = callback;
-}
-
 function findSlushWallet() {
-  return discoveredWallets.find(w => w.name.toLowerCase().includes('slush'));
+  return discoveredWallets.find((w) => w.name.toLowerCase().includes('slush'));
 }
 
 async function fetchAppConfig() {
@@ -36,8 +39,31 @@ async function fetchAppConfig() {
       paywallPackageId = cfg.paywall_package_id || null;
       return cfg;
     }
-  } catch (_) {}
+  } catch (_) {
+    // config fetch is best-effort
+  }
   return {};
+}
+
+function syncWalletSignal() {
+  walletState.value = {
+    connected: !!connectedAccount,
+    address: connectedAccount ? connectedAccount.address : null,
+    balance: walletState.value.balance,
+    available: true,
+    error: null,
+  };
+}
+
+async function refreshBalance() {
+  if (!connectedAccount || !suiClient) return;
+  try {
+    const balance = await suiClient.getBalance({ owner: connectedAccount.address });
+    const suiAmount = (Number(balance.totalBalance) / 1_000_000_000).toFixed(4);
+    walletState.value = { ...walletState.value, balance: suiAmount + ' SUI' };
+  } catch (_) {
+    walletState.value = { ...walletState.value, balance: '-- SUI' };
+  }
 }
 
 export async function initWallet() {
@@ -74,26 +100,18 @@ export async function initWallet() {
     sealClient = new SealClientClass({
       suiClient,
       serverConfigs: [
-        {
-          objectId: '0x73d05d62c18d9374e3ea529e8e0ed6161da1a141a94d3f76ae3fe4e99356db75',
-          weight: 1,
-        },
-        {
-          objectId: '0xf5d14a81a982144ae441cd7d64b09027f116a468bd36e7eca494f750591623c8',
-          weight: 1,
-        },
+        { objectId: '0x73d05d62c18d9374e3ea529e8e0ed6161da1a141a94d3f76ae3fe4e99356db75', weight: 1 },
+        { objectId: '0xf5d14a81a982144ae441cd7d64b09027f116a468bd36e7eca494f750591623c8', weight: 1 },
       ],
       verifyKeyServers: false,
     });
-
-    window._walletStandard = { getWallets, SuiClient, getFullnodeUrl, suiClient };
 
     const { get, on } = getWallets();
     discoveredWallets = [...get()];
 
     const unsubRegister = on('register', (...newWallets) => {
       for (const w of newWallets) {
-        if (!discoveredWallets.some(existing => existing.name === w.name)) {
+        if (!discoveredWallets.some((existing) => existing.name === w.name)) {
           discoveredWallets.push(w);
         }
       }
@@ -105,27 +123,34 @@ export async function initWallet() {
 
     const unsubUnregister = on('unregister', (...removed) => {
       for (const w of removed) {
-        discoveredWallets = discoveredWallets.filter(existing => existing.name !== w.name);
+        discoveredWallets = discoveredWallets.filter((existing) => existing.name !== w.name);
       }
     });
 
-    unsubscribeWalletEvents = () => { unsubRegister(); unsubUnregister(); };
+    unsubscribeWalletEvents = () => {
+      unsubRegister();
+      unsubUnregister();
+    };
 
-    registerSlushWallet('PayLock Video Streaming', {
-      origin: 'https://my.slush.app',
-    });
+    try {
+      const reg = registerSlushWallet('PayLock Video Streaming', { origin: window.location.origin });
+      if (reg && typeof reg.catch === 'function') reg.catch(() => {});
+    } catch (_) {
+      // Slush wallet registration can fail on unsupported origins
+    }
 
     const savedAddr = sessionStorage.getItem('paylock_wallet_addr');
     if (savedAddr && findSlushWallet()) {
       await autoReconnect();
     }
-  } catch (err) {
-    console.error('Wallet init failed:', err);
-    const btn = document.getElementById('wallet-btn');
-    btn.textContent = 'Wallet Unavailable';
-    btn.disabled = true;
-    btn.style.opacity = '0.5';
-    btn.style.cursor = 'not-allowed';
+  } catch (_) {
+    walletState.value = {
+      connected: false,
+      address: null,
+      balance: null,
+      available: false,
+      error: 'Wallet Unavailable',
+    };
   }
 }
 
@@ -138,8 +163,8 @@ async function autoReconnect() {
     if (result.accounts && result.accounts.length > 0) {
       connectedWallet = slush;
       connectedAccount = result.accounts[0];
-      await updateWalletUI();
-      if (onWalletConnectCallback) onWalletConnectCallback();
+      syncWalletSignal();
+      await refreshBalance();
     }
   } catch (_) {
     sessionStorage.removeItem('paylock_wallet_addr');
@@ -166,13 +191,14 @@ export async function connectWallet() {
       connectedWallet = slush;
       connectedAccount = result.accounts[0];
       sessionStorage.setItem('paylock_wallet_addr', connectedAccount.address);
-      await updateWalletUI();
-      if (onWalletConnectCallback) onWalletConnectCallback();
+      syncWalletSignal();
+      await refreshBalance();
     }
-  } catch (err) {
-    const btn = document.getElementById('wallet-btn');
-    btn.textContent = 'Connection Failed';
-    setTimeout(() => { btn.textContent = 'Connect Wallet'; }, 2000);
+  } catch (_) {
+    walletState.value = { ...walletState.value, error: 'Connection Failed' };
+    setTimeout(() => {
+      walletState.value = { ...walletState.value, error: null };
+    }, 2000);
   }
 }
 
@@ -180,61 +206,22 @@ export async function disconnectWallet() {
   if (connectedWallet) {
     try {
       const disconnectFeature = connectedWallet.features['standard:disconnect'];
-      if (disconnectFeature) {
-        await disconnectFeature.disconnect();
-      }
-    } catch (_) {}
+      if (disconnectFeature) await disconnectFeature.disconnect();
+    } catch (_) {
+      // disconnect is best-effort
+    }
   }
   connectedWallet = null;
   connectedAccount = null;
   sessionStorage.removeItem('paylock_wallet_addr');
-
-  const btn = document.getElementById('wallet-btn');
-  btn.textContent = 'Connect Wallet';
-  btn.className = 'wallet-btn connect';
-  document.getElementById('wallet-status').style.display = 'none';
-}
-
-export async function updateWalletUI() {
-  const btn = document.getElementById('wallet-btn');
-  const statusEl = document.getElementById('wallet-status');
-  const balanceEl = document.getElementById('wallet-balance');
-  const addrEl = document.getElementById('wallet-addr');
-
-  if (!connectedAccount) return;
-
-  const addr = connectedAccount.address;
-  const shortAddr = addr.slice(0, 6) + '...' + addr.slice(-4);
-
-  btn.textContent = 'Disconnect';
-  btn.className = 'wallet-btn connected';
-
-  addrEl.textContent = shortAddr;
-  statusEl.style.display = 'flex';
-
-  try {
-    const balance = await suiClient.getBalance({ owner: addr });
-    const suiAmount = (Number(balance.totalBalance) / 1_000_000_000).toFixed(4);
-    balanceEl.textContent = suiAmount + ' SUI';
-  } catch (_) {
-    balanceEl.textContent = '-- SUI';
-  }
+  walletState.value = { connected: false, address: null, balance: null, available: true, error: null };
 }
 
 export async function createVideoOnChain(videoId, price, previewBlobId, fullBlobId) {
-  if (!connectedWallet || !connectedAccount) {
-    throw new Error('Wallet not connected');
-  }
-  if (!paywallPackageId) {
-    throw new Error('Paywall contract not configured');
-  }
-  if (!Transaction || !signAndExecuteTransaction) {
-    throw new Error('Sui SDK not loaded');
-  }
-
-  if (!/^0x[0-9a-fA-F]{64}$/.test(paywallPackageId)) {
-    throw new Error('Invalid paywall package ID format');
-  }
+  if (!connectedWallet || !connectedAccount) throw new Error('Wallet not connected');
+  if (!paywallPackageId) throw new Error('Paywall contract not configured');
+  if (!Transaction || !signAndExecuteTransaction) throw new Error('Sui SDK not loaded');
+  if (!/^0x[0-9a-fA-F]{64}$/.test(paywallPackageId)) throw new Error('Invalid paywall package ID format');
 
   const tx = new Transaction();
   tx.moveCall({
@@ -259,12 +246,10 @@ export async function createVideoOnChain(videoId, price, previewBlobId, fullBlob
 
   const videoType = paywallPackageId + '::paywall::Video';
   const created = (txResponse.objectChanges || []).find(
-    c => c.type === 'created' && c.objectType === videoType
+    (c) => c.type === 'created' && c.objectType === videoType,
   );
 
-  if (!created) {
-    throw new Error('Video object not found in transaction result');
-  }
+  if (!created) throw new Error('Video object not found in transaction result');
 
   const suiObjectId = created.objectId;
 
@@ -281,11 +266,11 @@ export async function createVideoOnChain(videoId, price, previewBlobId, fullBlob
   return suiObjectId;
 }
 
-export async function encryptAndPublish(videoId, fileData, price) {
+export async function encryptAndPublish(videoId, fileData, price, onProgress) {
   if (!connectedWallet || !connectedAccount) throw new Error('Wallet not connected');
   if (!sealClient || !fromHex || !toHex) throw new Error('Seal SDK not loaded');
 
-  // Create Video on-chain with empty blob IDs to get the object ID for Seal encryption
+  if (onProgress) onProgress('encrypt');
   const suiObjectId = await createVideoOnChain(videoId, price, '', '');
 
   const nonce = crypto.getRandomValues(new Uint8Array(5));
@@ -299,14 +284,16 @@ export async function encryptAndPublish(videoId, fileData, price) {
     data: new Uint8Array(fileData),
   });
 
+  if (onProgress) onProgress('walrus');
   const walrusRes = await fetch(walrusPublisherUrl + '/v1/blobs?epochs=' + walrusEpochs, {
     method: 'PUT',
     body: encryptedBytes,
   });
   if (!walrusRes.ok) throw new Error('Walrus upload failed: ' + walrusRes.status);
   const walrusData = await walrusRes.json();
-  const fullBlobId = (walrusData.newlyCreated && walrusData.newlyCreated.blobObject && walrusData.newlyCreated.blobObject.blobId)
-    || (walrusData.alreadyCertified && walrusData.alreadyCertified.blobId);
+  const fullBlobId =
+    (walrusData.newlyCreated && walrusData.newlyCreated.blobObject && walrusData.newlyCreated.blobObject.blobId) ||
+    (walrusData.alreadyCertified && walrusData.alreadyCertified.blobId);
   if (!fullBlobId) throw new Error('Failed to get blob ID from Walrus response');
 
   return { suiObjectId, fullBlobId };
@@ -318,17 +305,11 @@ export async function updateBlobIds(suiObjectId, videoId, previewBlobId, fullBlo
   const updateTx = new Transaction();
   updateTx.moveCall({
     target: paywallPackageId + '::paywall::update_preview_blob_id',
-    arguments: [
-      updateTx.object(suiObjectId),
-      updateTx.pure.string(previewBlobId),
-    ],
+    arguments: [updateTx.object(suiObjectId), updateTx.pure.string(previewBlobId)],
   });
   updateTx.moveCall({
     target: paywallPackageId + '::paywall::update_full_blob_id',
-    arguments: [
-      updateTx.object(suiObjectId),
-      updateTx.pure.string(fullBlobId),
-    ],
+    arguments: [updateTx.object(suiObjectId), updateTx.pure.string(fullBlobId)],
   });
   await signAndExecuteTransaction(connectedWallet, {
     transaction: updateTx,
@@ -378,13 +359,9 @@ export async function purchaseVideo(video) {
   const [paymentCoin] = tx.splitCoins(tx.gas, [priceInMist]);
   tx.moveCall({
     target: paywallPackageId + '::paywall::purchase_and_transfer',
-    arguments: [
-      tx.object(video.sui_object_id),
-      paymentCoin,
-    ],
+    arguments: [tx.object(video.sui_object_id), paymentCoin],
   });
   tx.mergeCoins(tx.gas, [paymentCoin]);
-
   const result = await signAndExecuteTransaction(connectedWallet, {
     transaction: tx,
     account: connectedAccount,
@@ -398,22 +375,16 @@ export async function purchaseVideo(video) {
 
   const accessPassType = paywallPackageId + '::paywall::AccessPass';
   const created = (txResponse.objectChanges || []).find(
-    c => c.type === 'created' && c.objectType === accessPassType
+    (c) => c.type === 'created' && c.objectType === accessPassType,
   );
 
   return created ? created.objectId : null;
 }
 
-export async function decryptAndPlay(video, knownAccessPassId) {
+export async function decryptVideo(video, knownAccessPassId) {
   if (!connectedWallet || !connectedAccount) throw new Error('Wallet not connected');
   if (!sealClient || !SessionKeyClass || !EncryptedObjectClass) throw new Error('Seal SDK not loaded');
   if (!video.full_blob_url) throw new Error('Encrypted blob not available — upload may have failed');
-
-  const videoEl = document.getElementById('video-player');
-  const paywallEl = document.getElementById('paywall-overlay');
-  const hintEl = document.getElementById('paywall-hint');
-
-  if (hintEl) hintEl.textContent = 'Decrypting video...';
 
   const sessionKey = await SessionKeyClass.create({
     address: connectedAccount.address,
@@ -442,14 +413,14 @@ export async function decryptAndPlay(video, knownAccessPassId) {
   const parsedEncrypted = EncryptedObjectClass.parse(encryptedData);
   const sealId = parsedEncrypted.id;
 
-  const accessPassId = knownAccessPassId || await findAccessPass(video.sui_object_id);
+  const accessPassId = knownAccessPassId || (await findAccessPass(video.sui_object_id));
   if (!accessPassId) throw new Error('No AccessPass found for this video');
 
   const tx = new Transaction();
   tx.moveCall({
     target: paywallPackageId + '::paywall::seal_approve',
     arguments: [
-      tx.pure.vector('u8', Array.from(fromHex(toHex(sealId)))),
+      tx.pure.vector('u8', fromHex(sealId)),
       tx.object(accessPassId),
       tx.object(video.sui_object_id),
     ],
@@ -462,15 +433,8 @@ export async function decryptAndPlay(video, knownAccessPassId) {
     txBytes,
   });
 
-  if (videoEl.src && videoEl.src.startsWith('blob:')) {
-    URL.revokeObjectURL(videoEl.src);
-  }
   const blob = new Blob([decryptedBytes], { type: 'video/mp4' });
-  const blobUrl = URL.createObjectURL(blob);
-  videoEl.onended = null;
-  paywallEl.style.display = 'none';
-  videoEl.src = blobUrl;
-  videoEl.play().catch(() => {});
+  return URL.createObjectURL(blob);
 }
 
 export function isWalletConnected() {

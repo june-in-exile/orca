@@ -52,12 +52,14 @@ module paylock::paywall_tests {
         {
             let video = ts::take_shared<Video>(&scenario);
             let ctx = ts::ctx(&mut scenario);
-            let payment = coin::mint_for_testing<SUI>(PRICE, ctx);
-            let pass = paywall::purchase(&video, payment, ctx);
+            let mut payment = coin::mint_for_testing<SUI>(PRICE, ctx);
+            let pass = paywall::purchase(&video, &mut payment, ctx);
 
             assert!(paywall::access_pass_video_id(&pass) == object::id(&video));
+            assert!(coin::value(&payment) == 0);
 
             transfer::public_transfer(pass, BUYER);
+            coin::destroy_zero(payment);
             ts::return_shared(video);
         };
 
@@ -73,10 +75,13 @@ module paylock::paywall_tests {
         {
             let video = ts::take_shared<Video>(&scenario);
             let ctx = ts::ctx(&mut scenario);
-            let payment = coin::mint_for_testing<SUI>(PRICE * 2, ctx);
-            let pass = paywall::purchase(&video, payment, ctx);
+            let mut payment = coin::mint_for_testing<SUI>(PRICE * 2, ctx);
+            let pass = paywall::purchase(&video, &mut payment, ctx);
+
+            assert!(coin::value(&payment) == PRICE);
 
             transfer::public_transfer(pass, BUYER);
+            transfer::public_transfer(payment, BUYER);
             ts::return_shared(video);
         };
 
@@ -93,10 +98,11 @@ module paylock::paywall_tests {
         {
             let video = ts::take_shared<Video>(&scenario);
             let ctx = ts::ctx(&mut scenario);
-            let payment = coin::mint_for_testing<SUI>(PRICE - 1, ctx);
-            let pass = paywall::purchase(&video, payment, ctx);
+            let mut payment = coin::mint_for_testing<SUI>(PRICE - 1, ctx);
+            let pass = paywall::purchase(&video, &mut payment, ctx);
 
             transfer::public_transfer(pass, BUYER);
+            transfer::public_transfer(payment, BUYER);
             ts::return_shared(video);
         };
 
@@ -113,9 +119,10 @@ module paylock::paywall_tests {
         {
             let video = ts::take_shared<Video>(&scenario);
             let ctx = ts::ctx(&mut scenario);
-            let payment = coin::mint_for_testing<SUI>(PRICE, ctx);
-            let pass = paywall::purchase(&video, payment, ctx);
+            let mut payment = coin::mint_for_testing<SUI>(PRICE, ctx);
+            let pass = paywall::purchase(&video, &mut payment, ctx);
             transfer::public_transfer(pass, BUYER);
+            coin::destroy_zero(payment);
             ts::return_shared(video);
         };
 
@@ -163,9 +170,10 @@ module paylock::paywall_tests {
         {
             let video = ts::take_shared<Video>(&scenario);
             let ctx = ts::ctx(&mut scenario);
-            let payment = coin::mint_for_testing<SUI>(PRICE, ctx);
-            let pass = paywall::purchase(&video, payment, ctx);
+            let mut payment = coin::mint_for_testing<SUI>(PRICE, ctx);
+            let pass = paywall::purchase(&video, &mut payment, ctx);
             transfer::public_transfer(pass, BUYER);
+            coin::destroy_zero(payment);
             ts::return_shared(video);
         };
 
@@ -253,8 +261,9 @@ module paylock::paywall_tests {
         {
             let video = ts::take_shared<Video>(&scenario);
             let ctx = ts::ctx(&mut scenario);
-            let payment = coin::mint_for_testing<SUI>(PRICE, ctx);
-            paywall::purchase_and_transfer(&video, payment, ctx);
+            let mut payment = coin::mint_for_testing<SUI>(PRICE, ctx);
+            paywall::purchase_and_transfer(&video, &mut payment, ctx);
+            coin::destroy_zero(payment);
             ts::return_shared(video);
         };
 
