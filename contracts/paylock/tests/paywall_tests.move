@@ -261,9 +261,8 @@ module paylock::paywall_tests {
         {
             let video = ts::take_shared<Video>(&scenario);
             let ctx = ts::ctx(&mut scenario);
-            let mut payment = coin::mint_for_testing<SUI>(PRICE, ctx);
-            paywall::purchase_and_transfer(&video, &mut payment, ctx);
-            coin::destroy_zero(payment);
+            let payment = coin::mint_for_testing<SUI>(PRICE, ctx);
+            paywall::purchase_and_transfer(&video, payment, ctx);
             ts::return_shared(video);
         };
 

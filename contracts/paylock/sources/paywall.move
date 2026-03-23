@@ -89,13 +89,21 @@ module paylock::paywall {
     }
 
     /// Convenience entry function: purchases and transfers AccessPass to buyer.
+    /// Takes payment coin by value so the wallet correctly shows the outflow.
     entry fun purchase_and_transfer(
         video: &Video,
-        payment: &mut Coin<SUI>,
+        mut payment: Coin<SUI>,
         ctx: &mut TxContext,
     ) {
-        let pass = purchase(video, payment, ctx);
+        let pass = purchase(video, &mut payment, ctx);
         transfer::public_transfer(pass, tx_context::sender(ctx));
+
+        // Return any remaining balance to the buyer
+        if (coin::value(&payment) > 0) {
+            transfer::public_transfer(payment, tx_context::sender(ctx));
+        } else {
+            coin::destroy_zero(payment);
+        };
     }
 
     /// Seal key server calls this to verify decryption rights.

@@ -227,7 +227,7 @@ make clean        # 清除 bin/
 - [x] 雙 Blob 並行上傳（preview + full → Walrus）
 - [x] Video model 擴充（price, creator, preview/full blob IDs）
 - [x] 前端 paywall UI（價格輸入、價格 badge、preview → paywall overlay → play full）
-- [x] 部署合約至 Sui Testnet (`0x4672a0075aa01929f598d30cab42f2feb06dcb3e78985d7877003d6964824228`)
+- [x] 部署合約至 Sui Testnet (`0xedb439616a4b884662ea6488f290d2f053f379567656ce918c60846bbb605fc9`)
 - [x] 前端呼叫 `create_video` 建立鏈上 Video object
 
 ### Phase 2：付費解鎖 + Seal 加密 ✅

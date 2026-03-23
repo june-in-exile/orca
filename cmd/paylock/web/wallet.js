@@ -361,7 +361,6 @@ export async function purchaseVideo(video) {
     target: paywallPackageId + '::paywall::purchase_and_transfer',
     arguments: [tx.object(video.sui_object_id), paymentCoin],
   });
-  tx.mergeCoins(tx.gas, [paymentCoin]);
   const result = await signAndExecuteTransaction(connectedWallet, {
     transaction: tx,
     account: connectedAccount,
