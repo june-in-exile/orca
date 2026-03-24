@@ -1,4 +1,4 @@
-module paylock::paywall {
+module paylock::gating {
     use sui::coin::{Self, Coin};
     use sui::sui::SUI;
     use sui::transfer;

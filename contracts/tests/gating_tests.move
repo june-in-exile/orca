@@ -1,12 +1,12 @@
 #[test_only]
-module paylock::paywall_tests {
+module paylock::gating_tests {
     use sui::test_scenario::{Self as ts, Scenario};
     use sui::coin;
     use sui::sui::SUI;
     use sui::object;
     use std::string;
 
-    use paylock::paywall::{Self, Video, AccessPass};
+    use paylock::gating::{Self, Video, AccessPass};
 
     const CREATOR: address = @0xCAFE;
     const BUYER: address = @0xBEEF;
@@ -24,7 +24,7 @@ module paylock::paywall_tests {
         ts::next_tx(scenario, CREATOR);
         {
             let ctx = ts::ctx(scenario);
-            paywall::create_video(
+            gating::create_video(
                 PRICE,
                 string::utf8(b"preview_blob_abc"),
                 string::utf8(b"full_blob_xyz"),
@@ -42,11 +42,11 @@ module paylock::paywall_tests {
         ts::next_tx(&mut scenario, CREATOR);
         {
             let video = ts::take_shared<Video>(&scenario);
-            assert!(paywall::video_price(&video) == PRICE);
-            assert!(paywall::video_creator(&video) == CREATOR);
-            assert!(paywall::video_preview_blob_id(&video) == &string::utf8(b"preview_blob_abc"));
-            assert!(paywall::video_full_blob_id(&video) == &string::utf8(b"full_blob_xyz"));
-            assert!(paywall::video_seal_namespace(&video) == &TEST_NAMESPACE);
+            assert!(gating::video_price(&video) == PRICE);
+            assert!(gating::video_creator(&video) == CREATOR);
+            assert!(gating::video_preview_blob_id(&video) == &string::utf8(b"preview_blob_abc"));
+            assert!(gating::video_full_blob_id(&video) == &string::utf8(b"full_blob_xyz"));
+            assert!(gating::video_seal_namespace(&video) == &TEST_NAMESPACE);
             ts::return_shared(video);
         };
 
@@ -60,7 +60,7 @@ module paylock::paywall_tests {
         ts::next_tx(&mut scenario, CREATOR);
         {
             let ctx = ts::ctx(&mut scenario);
-            paywall::create_video(
+            gating::create_video(
                 0,
                 string::utf8(b"preview_blob_abc"),
                 string::utf8(b"full_blob_xyz"),
@@ -72,8 +72,8 @@ module paylock::paywall_tests {
         ts::next_tx(&mut scenario, CREATOR);
         {
             let video = ts::take_shared<Video>(&scenario);
-            assert!(paywall::video_price(&video) == 0);
-            assert!(paywall::video_seal_namespace(&video) == &vector[]);
+            assert!(gating::video_price(&video) == 0);
+            assert!(gating::video_seal_namespace(&video) == &vector[]);
             ts::return_shared(video);
         };
 
@@ -81,14 +81,14 @@ module paylock::paywall_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = paywall::EMissingSealNamespace)]
+    #[expected_failure(abort_code = gating::EMissingSealNamespace)]
     fun test_create_paid_video_empty_namespace_fails() {
         let mut scenario = ts::begin(CREATOR);
 
         ts::next_tx(&mut scenario, CREATOR);
         {
             let ctx = ts::ctx(&mut scenario);
-            paywall::create_video(
+            gating::create_video(
                 PRICE,
                 string::utf8(b"preview"),
                 string::utf8(b"full"),
@@ -110,9 +110,9 @@ module paylock::paywall_tests {
             let video = ts::take_shared<Video>(&scenario);
             let ctx = ts::ctx(&mut scenario);
             let mut payment = coin::mint_for_testing<SUI>(PRICE, ctx);
-            let pass = paywall::purchase(&video, &mut payment, ctx);
+            let pass = gating::purchase(&video, &mut payment, ctx);
 
-            assert!(paywall::access_pass_video_id(&pass) == object::id(&video));
+            assert!(gating::access_pass_video_id(&pass) == object::id(&video));
             assert!(coin::value(&payment) == 0);
 
             transfer::public_transfer(pass, BUYER);
@@ -133,7 +133,7 @@ module paylock::paywall_tests {
             let video = ts::take_shared<Video>(&scenario);
             let ctx = ts::ctx(&mut scenario);
             let mut payment = coin::mint_for_testing<SUI>(PRICE * 2, ctx);
-            let pass = paywall::purchase(&video, &mut payment, ctx);
+            let pass = gating::purchase(&video, &mut payment, ctx);
 
             assert!(coin::value(&payment) == PRICE);
 
@@ -146,7 +146,7 @@ module paylock::paywall_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = paywall::EInsufficientPayment)]
+    #[expected_failure(abort_code = gating::EInsufficientPayment)]
     fun test_purchase_insufficient_payment() {
         let mut scenario = ts::begin(CREATOR);
         create_test_video(&mut scenario);
@@ -156,7 +156,7 @@ module paylock::paywall_tests {
             let video = ts::take_shared<Video>(&scenario);
             let ctx = ts::ctx(&mut scenario);
             let mut payment = coin::mint_for_testing<SUI>(PRICE - 1, ctx);
-            let pass = paywall::purchase(&video, &mut payment, ctx);
+            let pass = gating::purchase(&video, &mut payment, ctx);
 
             transfer::public_transfer(pass, BUYER);
             transfer::public_transfer(payment, BUYER);
@@ -177,7 +177,7 @@ module paylock::paywall_tests {
             let video = ts::take_shared<Video>(&scenario);
             let ctx = ts::ctx(&mut scenario);
             let mut payment = coin::mint_for_testing<SUI>(PRICE, ctx);
-            let pass = paywall::purchase(&video, &mut payment, ctx);
+            let pass = gating::purchase(&video, &mut payment, ctx);
             transfer::public_transfer(pass, BUYER);
             coin::destroy_zero(payment);
             ts::return_shared(video);
@@ -197,7 +197,7 @@ module paylock::paywall_tests {
             vector::push_back(&mut seal_id, 0x04);
             vector::push_back(&mut seal_id, 0x05);
 
-            paywall::seal_approve(seal_id, &pass, &video);
+            gating::seal_approve(seal_id, &pass, &video);
 
             ts::return_to_sender(&scenario, pass);
             ts::return_shared(video);
@@ -207,7 +207,7 @@ module paylock::paywall_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = paywall::EInvalidSealId)]
+    #[expected_failure(abort_code = gating::EInvalidSealId)]
     fun test_seal_approve_wrong_namespace() {
         let mut scenario = ts::begin(CREATOR);
         create_test_video(&mut scenario);
@@ -218,7 +218,7 @@ module paylock::paywall_tests {
             let video = ts::take_shared<Video>(&scenario);
             let ctx = ts::ctx(&mut scenario);
             let mut payment = coin::mint_for_testing<SUI>(PRICE, ctx);
-            let pass = paywall::purchase(&video, &mut payment, ctx);
+            let pass = gating::purchase(&video, &mut payment, ctx);
             transfer::public_transfer(pass, BUYER);
             coin::destroy_zero(payment);
             ts::return_shared(video);
@@ -238,7 +238,7 @@ module paylock::paywall_tests {
                 0x01, 0x02, 0x03, 0x04, 0x05,
             ];
 
-            paywall::seal_approve(wrong_namespace, &pass, &video);
+            gating::seal_approve(wrong_namespace, &pass, &video);
 
             ts::return_to_sender(&scenario, pass);
             ts::return_shared(video);
@@ -248,7 +248,7 @@ module paylock::paywall_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = paywall::EVideoMismatch)]
+    #[expected_failure(abort_code = gating::EVideoMismatch)]
     fun test_seal_approve_wrong_video() {
         let mut scenario = ts::begin(CREATOR);
 
@@ -258,7 +258,7 @@ module paylock::paywall_tests {
         ts::next_tx(&mut scenario, CREATOR);
         {
             let ctx = ts::ctx(&mut scenario);
-            paywall::create_video(
+            gating::create_video(
                 PRICE,
                 string::utf8(b"other_preview"),
                 string::utf8(b"other_full"),
@@ -273,7 +273,7 @@ module paylock::paywall_tests {
             let video = ts::take_shared<Video>(&scenario);
             let ctx = ts::ctx(&mut scenario);
             let mut payment = coin::mint_for_testing<SUI>(PRICE, ctx);
-            let pass = paywall::purchase(&video, &mut payment, ctx);
+            let pass = gating::purchase(&video, &mut payment, ctx);
             transfer::public_transfer(pass, BUYER);
             coin::destroy_zero(payment);
             ts::return_shared(video);
@@ -289,7 +289,7 @@ module paylock::paywall_tests {
             let mut seal_id = TEST_NAMESPACE;
             vector::push_back(&mut seal_id, 0x01);
             // pass is for video1, but we pass video2 — should fail
-            paywall::seal_approve(seal_id, &pass, &video2);
+            gating::seal_approve(seal_id, &pass, &video2);
 
             ts::return_to_sender(&scenario, pass);
             ts::return_shared(video1);
@@ -309,7 +309,7 @@ module paylock::paywall_tests {
             let video = ts::take_shared<Video>(&scenario);
             let ctx = ts::ctx(&mut scenario);
             let payment = coin::mint_for_testing<SUI>(PRICE, ctx);
-            paywall::purchase_and_transfer(&video, payment, ctx);
+            gating::purchase_and_transfer(&video, payment, ctx);
             ts::return_shared(video);
         };
 
@@ -318,7 +318,7 @@ module paylock::paywall_tests {
         {
             let pass = ts::take_from_sender<AccessPass>(&scenario);
             let video = ts::take_shared<Video>(&scenario);
-            assert!(paywall::access_pass_video_id(&pass) == object::id(&video));
+            assert!(gating::access_pass_video_id(&pass) == object::id(&video));
             ts::return_to_sender(&scenario, pass);
             ts::return_shared(video);
         };

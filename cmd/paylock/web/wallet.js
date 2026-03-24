@@ -285,7 +285,7 @@ export async function createVideoOnChain(videoId, price, previewBlobId, fullBlob
 
   const tx = new Transaction();
   tx.moveCall({
-    target: paywallPackageId + '::paywall::create_video',
+    target: paywallPackageId + '::gating::create_video',
     arguments: [
       tx.pure.u64(price),
       tx.pure.string(previewBlobId),
@@ -305,7 +305,7 @@ export async function createVideoOnChain(videoId, price, previewBlobId, fullBlob
     options: { showObjectChanges: true },
   });
 
-  const videoType = paywallPackageId + '::paywall::Video';
+  const videoType = paywallPackageId + '::gating::Video';
   const created = (txResponse.objectChanges || []).find(
     (c) => c.type === 'created' && c.objectType === videoType,
   );
@@ -393,7 +393,7 @@ export async function findAccessPass(videoSuiObjectId) {
     if (key) localStorage.removeItem(key);
   }
 
-  const accessPassType = paywallPackageId + '::paywall::AccessPass';
+  const accessPassType = paywallPackageId + '::gating::AccessPass';
   let cursor = null;
   let hasNext = true;
   while (hasNext) {
@@ -425,7 +425,7 @@ export async function purchaseVideo(video) {
   const tx = new Transaction();
   const [paymentCoin] = tx.splitCoins(tx.gas, [priceInMist]);
   tx.moveCall({
-    target: paywallPackageId + '::paywall::purchase_and_transfer',
+    target: paywallPackageId + '::gating::purchase_and_transfer',
     arguments: [tx.object(video.sui_object_id), paymentCoin],
   });
   const result = await signAndExecuteTransaction(connectedWallet, {
@@ -439,7 +439,7 @@ export async function purchaseVideo(video) {
     options: { showObjectChanges: true },
   });
 
-  const accessPassType = paywallPackageId + '::paywall::AccessPass';
+  const accessPassType = paywallPackageId + '::gating::AccessPass';
   const created = (txResponse.objectChanges || []).find(
     (c) => c.type === 'created' && c.objectType === accessPassType,
   );
@@ -488,7 +488,7 @@ export async function decryptVideo(video, knownAccessPassId) {
 
   const tx = new Transaction();
   tx.moveCall({
-    target: paywallPackageId + '::paywall::seal_approve',
+    target: paywallPackageId + '::gating::seal_approve',
     arguments: [
       tx.pure.vector('u8', fromHex(sealId)),
       tx.object(accessPassId),
@@ -541,7 +541,7 @@ export async function decryptVideoAsOwner(video) {
 
   const tx = new Transaction();
   tx.moveCall({
-    target: paywallPackageId + '::paywall::seal_approve_owner',
+    target: paywallPackageId + '::gating::seal_approve_owner',
     arguments: [
       tx.pure.vector('u8', fromHex(sealId)),
       tx.object(video.sui_object_id),
