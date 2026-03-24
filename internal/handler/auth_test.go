@@ -43,6 +43,23 @@ func TestDelete_AllowsCorrectCreator(t *testing.T) {
 	}
 }
 
+func TestDelete_AllowsCaseInsensitiveCreator(t *testing.T) {
+	videos := mustNewVideoStore(t)
+	videos.Create("vid-001", "Test", 100, "0xAbCdEf")
+	h := NewDelete(videos)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/videos/vid-001", nil)
+	req.SetPathValue("id", "vid-001")
+	req.Header.Set("X-Creator", "0xabcdef")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for case-insensitive creator match, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestDelete_AllowsNoCreatorVideo(t *testing.T) {
 	videos := mustNewVideoStore(t)
 	videos.Create("vid-001", "Test", 0, "")

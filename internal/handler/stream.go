@@ -15,6 +15,8 @@ func NewStream(videos *model.VideoStore) *Stream {
 }
 
 // ServeHTTP redirects to the preview blob URL (public, anyone can access).
+// Supports both paylock_id and sui_object_id lookups.
+// When accessed by paylock_id and the video has a sui_object_id, returns 307 to the canonical URL.
 func (h *Stream) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -22,11 +24,24 @@ func (h *Stream) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	video, ok := h.videos.Get(id)
+	video, canonical, ok := h.videos.Resolve(id)
 	if !ok {
 		http.Error(w, "video not found", http.StatusNotFound)
 		return
 	}
+
+	// If accessed by paylock_id and a canonical sui_object_id exists, redirect.
+	if !canonical && video.SuiObjectID != "" {
+		canonicalURL := "/stream/" + video.SuiObjectID
+		http.Redirect(w, r, canonicalURL, http.StatusTemporaryRedirect)
+		return
+	}
+
+	// Deprecation warning when accessed by paylock_id.
+	if !canonical {
+		setDeprecationHeaders(w, "/stream/{sui_object_id}")
+	}
+
 	if video.Status != model.StatusReady {
 		http.Error(w, "video is not ready", http.StatusServiceUnavailable)
 		return
@@ -48,7 +63,8 @@ func NewStreamFull(videos *model.VideoStore) *StreamFull {
 }
 
 // ServeHTTP redirects to the full blob URL.
-// In Phase 2, this will require Seal decryption on the frontend.
+// Supports both paylock_id and sui_object_id lookups.
+// When accessed by paylock_id and the video has a sui_object_id, returns 307 to the canonical URL.
 func (h *StreamFull) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -56,11 +72,24 @@ func (h *StreamFull) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	video, ok := h.videos.Get(id)
+	video, canonical, ok := h.videos.Resolve(id)
 	if !ok {
 		http.Error(w, "video not found", http.StatusNotFound)
 		return
 	}
+
+	// If accessed by paylock_id and a canonical sui_object_id exists, redirect.
+	if !canonical && video.SuiObjectID != "" {
+		canonicalURL := "/stream/" + video.SuiObjectID + "/full"
+		http.Redirect(w, r, canonicalURL, http.StatusTemporaryRedirect)
+		return
+	}
+
+	// Deprecation warning when accessed by paylock_id.
+	if !canonical {
+		setDeprecationHeaders(w, "/stream/{sui_object_id}/full")
+	}
+
 	if video.Status != model.StatusReady {
 		http.Error(w, "video is not ready", http.StatusServiceUnavailable)
 		return
@@ -71,4 +100,12 @@ func (h *StreamFull) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, video.FullBlobURL, http.StatusTemporaryRedirect)
+}
+
+// setDeprecationHeaders adds standard deprecation headers to warn clients
+// that the paylock_id-based path is deprecated in favor of sui_object_id.
+func setDeprecationHeaders(w http.ResponseWriter, canonical string) {
+	w.Header().Set("Deprecation", "true")
+	w.Header().Set("Sunset", "2026-06-23")
+	w.Header().Set("Link", `<`+canonical+`>; rel="successor-version"`)
 }

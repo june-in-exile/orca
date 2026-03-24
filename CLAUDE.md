@@ -28,6 +28,7 @@ go test ./internal/processor/... -run TestValidateMagicBytes -v
 | `PAYLOCK_ENABLE_FFMPEG` | `true` | Enable FFmpeg processing for preview/thumbnail |
 | `PAYLOCK_GATING_PACKAGE_ID` | *(none)* | Deployed gating Move package ID on Sui |
 | `PAYLOCK_SUI_RPC_URL` | `https://fullnode.testnet.sui.io:443` | Sui JSON-RPC endpoint |
+| `PAYLOCK_ADMIN_SECRET` | *(none)* | Bearer token for admin endpoints (e.g. `POST /api/reindex`) |
 
 ## Architecture
 
@@ -36,15 +37,19 @@ PayLock is a video upload service that stores MP4 files on Walrus decentralized 
 ```
 cmd/paylock/main.go          — wires all packages; route groups:
                             POST /api/upload, GET /api/status/{id}
-                            GET /api/videos, DELETE /api/videos/{id}
+                            GET /api/videos, GET /api/videos/by-object/{object_id}
+                            DELETE /api/videos/{id}
                             PUT /api/videos/{id}/sui-object, GET /api/config
-                            GET /stream/{id}                        → redirects to Walrus
+                            POST /api/reindex
+                            GET /stream/{id}       → canonical: sui_object_id; legacy: paylock_id (307 redirect)
+                            GET /stream/{id}/full
 
 internal/config/          — env-based config
-internal/model/           — VideoStore (sync.RWMutex + JSON file persistence in PAYLOCK_DATA_DIR)
+internal/model/           — VideoStore (sync.RWMutex + JSON file persistence + sui_object_id secondary index)
 internal/walrus/          — Walrus HTTP client (Store, BlobURL)
 internal/processor/       — MP4 magic-byte validator + size validator
 internal/handler/         — HTTP handlers; upload validates then async uploads to Walrus
+internal/indexer/         — Sui chain reindexer (scans on-chain Video objects via JSON-RPC)
 internal/middleware/      — CORS middleware
 ```
 
@@ -56,6 +61,8 @@ internal/middleware/      — CORS middleware
 - **Purchase flow**: User pays via `purchase_and_transfer` → mints AccessPass → Seal SessionKey + `seal_approve` tx → decrypt encrypted blob in browser → play via blob URL.
 - **No local file storage**: Videos go directly to Walrus. No HLS segmentation.
 - **VideoStore persists to disk**: Video metadata is saved as `videos.json` in `PAYLOCK_DATA_DIR` (default `data/`). Deleting the file only removes local records; Walrus blobs are unaffected.
-- **Stream endpoint redirects**: `GET /stream/{id}` returns a 307 redirect to the Walrus aggregator blob URL.
+- **Canonical ID = sui_object_id**: External discovery and streaming use `sui_object_id`. `paylock_id` is a temporary internal workflow ID used during upload. Stream routes accessed by `paylock_id` redirect to the canonical `sui_object_id` URL when available, with `Deprecation` headers.
+- **Chain reindexer**: On startup, the server scans the Sui chain for all `Video` objects created by the gating package and populates the VideoStore. If `videos.json` is missing, the store is rebuilt from chain state. `POST /api/reindex` triggers a manual reindex.
+- **Stream endpoint redirects**: `GET /stream/{id}` returns a 307 redirect to the Walrus aggregator blob URL. Supports both `paylock_id` and `sui_object_id` lookups.
 - **Only MP4 input is accepted**: Magic bytes check (`ftyp` at offset 4).
 - **Frontend uses native `<video>`**: No HLS.js dependency. The browser plays MP4 directly from the Walrus aggregator URL (or from decrypted blob URL for paid videos).

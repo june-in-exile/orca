@@ -21,6 +21,7 @@ type Config struct {
 	SuiRPCURL        string
 	GatingPackageID  string
 	DataDir          string
+	AdminSecret      string
 }
 
 func Load() (*Config, error) {
@@ -39,6 +40,7 @@ func Load() (*Config, error) {
 		PreviewDuration:  10,
 		SuiRPCURL:        envOrDefault("PAYLOCK_SUI_RPC_URL", "https://fullnode.testnet.sui.io:443"),
 		GatingPackageID:  envOrDefault("PAYLOCK_GATING_PACKAGE_ID", "0xec50faf6c1bb5720d7744476282a7b22600254de3ed849808ff9aacef8ba161a"),
+		AdminSecret:      os.Getenv("PAYLOCK_ADMIN_SECRET"),
 	}
 
 	if v := os.Getenv("PAYLOCK_MAX_FILE_SIZE_MB"); v != "" {

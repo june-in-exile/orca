@@ -193,6 +193,8 @@ async function confirmUpload(fileInput) {
     document.getElementById('video-title').value = '';
     document.getElementById('video-price').value = '';
 
+    let navigateId = data.id;
+
     if (priceMist > 0 && fileArrayBuffer) {
       uploadState.value = { ...uploadState.value, showSpinner: true, showSteps: true, step: 'parallel', previewDone: false, browserStep: 'encrypt', text: 'Encrypting & uploading...' };
 
@@ -210,12 +212,17 @@ async function confirmUpload(fileInput) {
       ]);
 
       uploadState.value = { ...uploadState.value, step: 'onchain', previewDone: true, browserStep: 'done', text: 'Creating video on-chain...' };
-      await mod.createVideoOnChain(data.id, priceMist, video.preview_blob_id, encResult.fullBlobId, encResult.namespace);
+      const suiObjectId = await mod.createVideoOnChain(data.id, priceMist, video.preview_blob_id, encResult.fullBlobId, encResult.namespace);
+      navigateId = suiObjectId;
+    } else {
+      uploadState.value = { ...uploadState.value, showSpinner: true, text: 'Processing video...' };
+      const video = await pollUntilReady(data.id);
+      if (video.sui_object_id) navigateId = video.sui_object_id;
     }
 
     uploadState.value = { active: false, percent: 0, text: '', step: null, showSpinner: false, showSteps: false };
     showToast('success', 'Upload complete!');
-    navigate('player', { id: data.id });
+    navigate('player', { id: navigateId });
   } catch (err) {
     uploadState.value = { active: false, percent: 0, text: '', step: null, showSpinner: false, showSteps: false };
     showToast('error', 'Upload failed: ' + err.message, 5000);

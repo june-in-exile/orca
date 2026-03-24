@@ -233,6 +233,180 @@ func TestVideoStore_DeletePersists(t *testing.T) {
 	}
 }
 
+func TestVideoStore_GetBySuiObjectID(t *testing.T) {
+	store := newTestStore(t)
+	store.Create("test-1", "My Video", 0, "")
+	store.SetSuiObjectID("test-1", "0xOBJ123", "", "")
+
+	v, ok := store.GetBySuiObjectID("0xOBJ123")
+	if !ok {
+		t.Fatal("expected video to be found by sui_object_id")
+	}
+	if v.ID != "test-1" {
+		t.Errorf("expected id test-1, got %s", v.ID)
+	}
+
+	_, ok = store.GetBySuiObjectID("0xNONEXISTENT")
+	if ok {
+		t.Fatal("expected no video for unknown sui_object_id")
+	}
+}
+
+func TestVideoStore_GetBySuiObjectID_ReturnsImmutableCopy(t *testing.T) {
+	store := newTestStore(t)
+	store.Create("test-1", "My Video", 0, "")
+	store.SetSuiObjectID("test-1", "0xOBJ123", "", "")
+
+	v1, _ := store.GetBySuiObjectID("0xOBJ123")
+	v1.Title = "Mutated"
+
+	v2, _ := store.GetBySuiObjectID("0xOBJ123")
+	if v2.Title != "My Video" {
+		t.Error("mutation of returned copy should not affect store")
+	}
+}
+
+func TestVideoStore_Resolve(t *testing.T) {
+	store := newTestStore(t)
+	store.Create("test-1", "My Video", 0, "")
+	store.SetSuiObjectID("test-1", "0xOBJ123", "", "")
+
+	// Resolve by paylock_id
+	v, canonical, found := store.Resolve("test-1")
+	if !found {
+		t.Fatal("expected video found by paylock_id")
+	}
+	if canonical {
+		t.Error("expected canonical=false for paylock_id lookup")
+	}
+	if v.ID != "test-1" {
+		t.Errorf("expected id test-1, got %s", v.ID)
+	}
+
+	// Resolve by sui_object_id
+	v, canonical, found = store.Resolve("0xOBJ123")
+	if !found {
+		t.Fatal("expected video found by sui_object_id")
+	}
+	if !canonical {
+		t.Error("expected canonical=true for sui_object_id lookup")
+	}
+	if v.ID != "test-1" {
+		t.Errorf("expected id test-1, got %s", v.ID)
+	}
+
+	// Resolve unknown
+	_, _, found = store.Resolve("unknown")
+	if found {
+		t.Fatal("expected not found for unknown id")
+	}
+}
+
+func TestVideoStore_Delete_RemovesObjectIDIndex(t *testing.T) {
+	store := newTestStore(t)
+	store.Create("test-1", "My Video", 0, "")
+	store.SetSuiObjectID("test-1", "0xOBJ123", "", "")
+	store.Delete("test-1")
+
+	_, ok := store.GetBySuiObjectID("0xOBJ123")
+	if ok {
+		t.Fatal("expected sui_object_id index to be removed after delete")
+	}
+}
+
+func TestVideoStore_ObjectIDIndex_PersistsOnReload(t *testing.T) {
+	dir := t.TempDir()
+
+	store1, err := NewVideoStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store1.Create("v1", "Video One", 0, "")
+	store1.SetSuiObjectID("v1", "0xOBJ456", "", "")
+
+	store2, err := NewVideoStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	v, ok := store2.GetBySuiObjectID("0xOBJ456")
+	if !ok {
+		t.Fatal("expected sui_object_id index to be rebuilt on reload")
+	}
+	if v.ID != "v1" {
+		t.Errorf("expected id v1, got %s", v.ID)
+	}
+}
+
+func TestVideoStore_UpsertFromChain_NewEntry(t *testing.T) {
+	store := newTestStore(t)
+
+	created := store.UpsertFromChain("0xNEW", 500, "0xCreator", "pBlob", "pURL", "fBlob", "fURL")
+	if !created {
+		t.Fatal("expected new entry to be created")
+	}
+
+	v, ok := store.GetBySuiObjectID("0xNEW")
+	if !ok {
+		t.Fatal("expected video to be findable by sui_object_id")
+	}
+	if v.ID != "0xNEW" {
+		t.Errorf("expected id 0xNEW, got %s", v.ID)
+	}
+	if v.Status != StatusReady {
+		t.Errorf("expected status ready, got %s", v.Status)
+	}
+	if v.Price != 500 {
+		t.Errorf("expected price 500, got %d", v.Price)
+	}
+	if v.PreviewBlobID != "pBlob" {
+		t.Errorf("expected preview_blob_id pBlob, got %s", v.PreviewBlobID)
+	}
+
+	// Also findable by ID (since ID = sui_object_id for chain-created entries)
+	v2, ok := store.Get("0xNEW")
+	if !ok {
+		t.Fatal("expected video to be findable by ID")
+	}
+	if v2.SuiObjectID != "0xNEW" {
+		t.Errorf("expected sui_object_id 0xNEW, got %s", v2.SuiObjectID)
+	}
+}
+
+func TestVideoStore_UpsertFromChain_ExistingEntry(t *testing.T) {
+	store := newTestStore(t)
+	store.Create("local-1", "My Video", 0, "")
+	store.SetSuiObjectID("local-1", "0xEXIST", "", "")
+
+	// Upsert should NOT create a new entry, but should fill in missing blob IDs.
+	created := store.UpsertFromChain("0xEXIST", 0, "", "pBlob", "pURL", "fBlob", "fURL")
+	if created {
+		t.Fatal("expected no new entry for existing object")
+	}
+
+	v, _ := store.Get("local-1")
+	if v.PreviewBlobID != "pBlob" {
+		t.Errorf("expected preview_blob_id to be updated, got %s", v.PreviewBlobID)
+	}
+	if v.FullBlobID != "fBlob" {
+		t.Errorf("expected full_blob_id to be updated, got %s", v.FullBlobID)
+	}
+}
+
+func TestVideoStore_UpsertFromChain_DoesNotOverwrite(t *testing.T) {
+	store := newTestStore(t)
+	store.Create("local-1", "My Video", 0, "")
+	store.SetReady("local-1", "tb", "tURL", "existingPBlob", "existingPURL", "existingFBlob", "existingFURL")
+	store.SetSuiObjectID("local-1", "0xEXIST", "", "")
+
+	store.UpsertFromChain("0xEXIST", 0, "", "chainPBlob", "chainPURL", "chainFBlob", "chainFURL")
+
+	v, _ := store.Get("local-1")
+	if v.PreviewBlobID != "existingPBlob" {
+		t.Errorf("expected existing blob ID to be preserved, got %s", v.PreviewBlobID)
+	}
+}
+
 func TestVideoStore_PersistenceFileLocation(t *testing.T) {
 	dir := t.TempDir()
 

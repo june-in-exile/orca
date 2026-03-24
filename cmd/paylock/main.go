@@ -13,6 +13,7 @@ import (
 
 	"github.com/anthropics/paylock/internal/config"
 	"github.com/anthropics/paylock/internal/handler"
+	"github.com/anthropics/paylock/internal/indexer"
 	"github.com/anthropics/paylock/internal/middleware"
 	"github.com/anthropics/paylock/internal/model"
 	"github.com/anthropics/paylock/internal/processor"
@@ -45,6 +46,34 @@ func main() {
 		os.Exit(1)
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	// Chain indexer for reindexing from Sui
+	idx := indexer.New(cfg.SuiRPCURL, cfg.GatingPackageID)
+
+	// Background reindex on startup (respects shutdown signal)
+	go func() {
+		reindexCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		defer cancel()
+
+		chainVideos, err := idx.FetchAll(reindexCtx)
+		if err != nil {
+			slog.Error("startup reindex failed", "error", err)
+			return
+		}
+
+		created := 0
+		for _, cv := range chainVideos {
+			previewURL := wc.BlobURL(cv.PreviewBlobID)
+			fullURL := wc.BlobURL(cv.FullBlobID)
+			if videos.UpsertFromChain(cv.ObjectID, cv.Price, cv.Creator, cv.PreviewBlobID, previewURL, cv.FullBlobID, fullURL) {
+				created++
+			}
+		}
+		slog.Info("startup reindex complete", "chain_total", len(chainVideos), "new_entries", created)
+	}()
+
 	mux := http.NewServeMux()
 
 	// API routes
@@ -52,11 +81,13 @@ func main() {
 	mux.Handle("GET /api/status/{id}", handler.NewStatus(videos))
 	mux.Handle("GET /api/status/{id}/events", handler.NewStatusEvents(videos))
 	mux.Handle("GET /api/videos", handler.NewVideos(videos))
+	mux.Handle("GET /api/videos/by-object/{object_id}", handler.NewVideoByObject(videos))
 	mux.Handle("DELETE /api/videos/{id}", handler.NewDelete(videos))
 	mux.Handle("PUT /api/videos/{id}/sui-object", handler.NewSetSuiObject(videos, wc))
 	mux.Handle("GET /api/config", handler.NewAppConfig(cfg))
+	mux.Handle("POST /api/reindex", handler.NewReindex(idx, videos, wc.BlobURL, cfg.AdminSecret))
 
-	// Stream routes — redirect to Walrus aggregator
+	// Stream routes — redirect to Walrus aggregator (supports both paylock_id and sui_object_id)
 	cors := middleware.CORS()
 	mux.Handle("GET /stream/{id}", cors(handler.NewStream(videos)))
 	mux.Handle("GET /stream/{id}/full", cors(handler.NewStreamFull(videos)))
@@ -88,9 +119,6 @@ func main() {
 		WriteTimeout: 120 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	go func() {
 		slog.Info("paylock server starting",

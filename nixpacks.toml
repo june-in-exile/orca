@@ -1,9 +1,0 @@
-[phases.setup]
-nixPkgs = ["go"]
-aptPkgs = ["ffmpeg"]
-
-[phases.build]
-cmds = ["go build -o paylock ./cmd/paylock"]
-
-[start]
-cmd = "./paylock"
