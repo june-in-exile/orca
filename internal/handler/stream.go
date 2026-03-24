@@ -6,18 +6,18 @@ import (
 	"github.com/anthropics/paylock/internal/model"
 )
 
-type Stream struct {
+type StreamPreview struct {
 	videos *model.VideoStore
 }
 
-func NewStream(videos *model.VideoStore) *Stream {
-	return &Stream{videos: videos}
+func NewStreamPreview(videos *model.VideoStore) *StreamPreview {
+	return &StreamPreview{videos: videos}
 }
 
 // ServeHTTP redirects to the preview blob URL (public, anyone can access).
 // Supports both paylock_id and sui_object_id lookups.
 // When accessed by paylock_id and the video has a sui_object_id, returns 307 to the canonical URL.
-func (h *Stream) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *StreamPreview) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
 		http.Error(w, "missing video id", http.StatusBadRequest)
@@ -32,14 +32,14 @@ func (h *Stream) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// If accessed by paylock_id and a canonical sui_object_id exists, redirect.
 	if !canonical && video.SuiObjectID != "" {
-		canonicalURL := "/stream/" + video.SuiObjectID
+		canonicalURL := "/stream/" + video.SuiObjectID + "/preview"
 		http.Redirect(w, r, canonicalURL, http.StatusTemporaryRedirect)
 		return
 	}
 
 	// Deprecation warning when accessed by paylock_id.
 	if !canonical {
-		setDeprecationHeaders(w, "/stream/{sui_object_id}")
+		setDeprecationHeaders(w, "/stream/{sui_object_id}/preview")
 	}
 
 	if video.Status != model.StatusReady {
@@ -100,6 +100,41 @@ func (h *StreamFull) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, video.FullBlobURL, http.StatusTemporaryRedirect)
+}
+
+// StreamLegacy handles the deprecated GET /stream/{id} path.
+// It redirects to /stream/{id}/preview with deprecation headers.
+type StreamLegacy struct {
+	videos *model.VideoStore
+}
+
+func NewStreamLegacy(videos *model.VideoStore) *StreamLegacy {
+	return &StreamLegacy{videos: videos}
+}
+
+func (h *StreamLegacy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "missing video id", http.StatusBadRequest)
+		return
+	}
+
+	// Resolve to canonical sui_object_id if possible.
+	video, canonical, ok := h.videos.Resolve(id)
+	if !ok {
+		http.Error(w, "video not found", http.StatusNotFound)
+		return
+	}
+
+	target := id
+	if !canonical && video.SuiObjectID != "" {
+		target = video.SuiObjectID
+	}
+
+	w.Header().Set("Deprecation", "true")
+	w.Header().Set("Sunset", "2026-09-23")
+	w.Header().Set("Link", `</stream/`+target+`/preview>; rel="successor-version"`)
+	http.Redirect(w, r, "/stream/"+target+"/preview", http.StatusTemporaryRedirect)
 }
 
 // setDeprecationHeaders adds standard deprecation headers to warn clients

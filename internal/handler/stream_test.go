@@ -6,13 +6,13 @@ import (
 	"testing"
 )
 
-func TestStream_ByPayLockID(t *testing.T) {
+func TestStreamPreview_ByPayLockID(t *testing.T) {
 	store := mustNewVideoStore(t)
 	store.Create("abc123", "Test Video", 0, "")
 	store.SetReady("abc123", "tb", "https://agg/v1/blobs/tb", "pb", "https://agg/v1/blobs/pb", "fb", "https://agg/v1/blobs/fb")
 
-	h := NewStream(store)
-	req := httptest.NewRequest(http.MethodGet, "/stream/abc123", nil)
+	h := NewStreamPreview(store)
+	req := httptest.NewRequest(http.MethodGet, "/stream/abc123/preview", nil)
 	req.SetPathValue("id", "abc123")
 	rec := httptest.NewRecorder()
 
@@ -26,14 +26,14 @@ func TestStream_ByPayLockID(t *testing.T) {
 	}
 }
 
-func TestStream_BySuiObjectID(t *testing.T) {
+func TestStreamPreview_BySuiObjectID(t *testing.T) {
 	store := mustNewVideoStore(t)
 	store.Create("abc123", "Test Video", 0, "")
 	store.SetReady("abc123", "tb", "https://agg/v1/blobs/tb", "pb", "https://agg/v1/blobs/pb", "fb", "https://agg/v1/blobs/fb")
 	store.SetSuiObjectID("abc123", "0xOBJ999", "", "")
 
-	h := NewStream(store)
-	req := httptest.NewRequest(http.MethodGet, "/stream/0xOBJ999", nil)
+	h := NewStreamPreview(store)
+	req := httptest.NewRequest(http.MethodGet, "/stream/0xOBJ999/preview", nil)
 	req.SetPathValue("id", "0xOBJ999")
 	rec := httptest.NewRecorder()
 
@@ -47,14 +47,14 @@ func TestStream_BySuiObjectID(t *testing.T) {
 	}
 }
 
-func TestStream_PayLockID_RedirectsToCanonical(t *testing.T) {
+func TestStreamPreview_PayLockID_RedirectsToCanonical(t *testing.T) {
 	store := mustNewVideoStore(t)
 	store.Create("abc123", "Test Video", 0, "")
 	store.SetReady("abc123", "tb", "https://agg/v1/blobs/tb", "pb", "https://agg/v1/blobs/pb", "fb", "https://agg/v1/blobs/fb")
 	store.SetSuiObjectID("abc123", "0xOBJ999", "", "")
 
-	h := NewStream(store)
-	req := httptest.NewRequest(http.MethodGet, "/stream/abc123", nil)
+	h := NewStreamPreview(store)
+	req := httptest.NewRequest(http.MethodGet, "/stream/abc123/preview", nil)
 	req.SetPathValue("id", "abc123")
 	rec := httptest.NewRecorder()
 
@@ -63,16 +63,16 @@ func TestStream_PayLockID_RedirectsToCanonical(t *testing.T) {
 	if rec.Code != http.StatusTemporaryRedirect {
 		t.Fatalf("expected 307, got %d", rec.Code)
 	}
-	if got := rec.Header().Get("Location"); got != "/stream/0xOBJ999" {
-		t.Errorf("expected canonical redirect to /stream/0xOBJ999, got %s", got)
+	if got := rec.Header().Get("Location"); got != "/stream/0xOBJ999/preview" {
+		t.Errorf("expected canonical redirect to /stream/0xOBJ999/preview, got %s", got)
 	}
 }
 
-func TestStream_NotFound(t *testing.T) {
+func TestStreamPreview_NotFound(t *testing.T) {
 	store := mustNewVideoStore(t)
-	h := NewStream(store)
+	h := NewStreamPreview(store)
 
-	req := httptest.NewRequest(http.MethodGet, "/stream/unknown", nil)
+	req := httptest.NewRequest(http.MethodGet, "/stream/unknown/preview", nil)
 	req.SetPathValue("id", "unknown")
 	rec := httptest.NewRecorder()
 
@@ -83,12 +83,12 @@ func TestStream_NotFound(t *testing.T) {
 	}
 }
 
-func TestStream_NotReady(t *testing.T) {
+func TestStreamPreview_NotReady(t *testing.T) {
 	store := mustNewVideoStore(t)
 	store.Create("abc123", "Test Video", 0, "")
 
-	h := NewStream(store)
-	req := httptest.NewRequest(http.MethodGet, "/stream/abc123", nil)
+	h := NewStreamPreview(store)
+	req := httptest.NewRequest(http.MethodGet, "/stream/abc123/preview", nil)
 	req.SetPathValue("id", "abc123")
 	rec := httptest.NewRecorder()
 
@@ -99,14 +99,14 @@ func TestStream_NotReady(t *testing.T) {
 	}
 }
 
-func TestStream_ByPayLockID_DeprecationHeaders(t *testing.T) {
+func TestStreamPreview_ByPayLockID_DeprecationHeaders(t *testing.T) {
 	store := mustNewVideoStore(t)
 	store.Create("abc123", "Test Video", 0, "")
 	store.SetReady("abc123", "tb", "https://agg/v1/blobs/tb", "pb", "https://agg/v1/blobs/pb", "fb", "https://agg/v1/blobs/fb")
 	// No sui_object_id set — should get deprecation headers instead of canonical redirect.
 
-	h := NewStream(store)
-	req := httptest.NewRequest(http.MethodGet, "/stream/abc123", nil)
+	h := NewStreamPreview(store)
+	req := httptest.NewRequest(http.MethodGet, "/stream/abc123/preview", nil)
 	req.SetPathValue("id", "abc123")
 	rec := httptest.NewRecorder()
 
@@ -123,14 +123,14 @@ func TestStream_ByPayLockID_DeprecationHeaders(t *testing.T) {
 	}
 }
 
-func TestStream_BySuiObjectID_NoDeprecationHeaders(t *testing.T) {
+func TestStreamPreview_BySuiObjectID_NoDeprecationHeaders(t *testing.T) {
 	store := mustNewVideoStore(t)
 	store.Create("abc123", "Test Video", 0, "")
 	store.SetReady("abc123", "tb", "https://agg/v1/blobs/tb", "pb", "https://agg/v1/blobs/pb", "fb", "https://agg/v1/blobs/fb")
 	store.SetSuiObjectID("abc123", "0xOBJ999", "", "")
 
-	h := NewStream(store)
-	req := httptest.NewRequest(http.MethodGet, "/stream/0xOBJ999", nil)
+	h := NewStreamPreview(store)
+	req := httptest.NewRequest(http.MethodGet, "/stream/0xOBJ999/preview", nil)
 	req.SetPathValue("id", "0xOBJ999")
 	rec := httptest.NewRecorder()
 
@@ -180,5 +180,84 @@ func TestStreamFull_PayLockID_RedirectsToCanonical(t *testing.T) {
 	}
 	if got := rec.Header().Get("Location"); got != "/stream/0xOBJ999/full" {
 		t.Errorf("expected canonical redirect to /stream/0xOBJ999/full, got %s", got)
+	}
+}
+
+func TestStreamLegacy_RedirectsToPreview(t *testing.T) {
+	store := mustNewVideoStore(t)
+	store.Create("abc123", "Test Video", 0, "")
+	store.SetReady("abc123", "tb", "https://agg/v1/blobs/tb", "pb", "https://agg/v1/blobs/pb", "fb", "https://agg/v1/blobs/fb")
+
+	h := NewStreamLegacy(store)
+	req := httptest.NewRequest(http.MethodGet, "/stream/abc123", nil)
+	req.SetPathValue("id", "abc123")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("expected 307, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("Location"); got != "/stream/abc123/preview" {
+		t.Errorf("expected redirect to /stream/abc123/preview, got %s", got)
+	}
+}
+
+func TestStreamLegacy_ResolvesToCanonical(t *testing.T) {
+	store := mustNewVideoStore(t)
+	store.Create("abc123", "Test Video", 0, "")
+	store.SetReady("abc123", "tb", "https://agg/v1/blobs/tb", "pb", "https://agg/v1/blobs/pb", "fb", "https://agg/v1/blobs/fb")
+	store.SetSuiObjectID("abc123", "0xOBJ999", "", "")
+
+	h := NewStreamLegacy(store)
+	req := httptest.NewRequest(http.MethodGet, "/stream/abc123", nil)
+	req.SetPathValue("id", "abc123")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("expected 307, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("Location"); got != "/stream/0xOBJ999/preview" {
+		t.Errorf("expected redirect to /stream/0xOBJ999/preview, got %s", got)
+	}
+}
+
+func TestStreamLegacy_DeprecationHeaders(t *testing.T) {
+	store := mustNewVideoStore(t)
+	store.Create("abc123", "Test Video", 0, "")
+	store.SetReady("abc123", "tb", "https://agg/v1/blobs/tb", "pb", "https://agg/v1/blobs/pb", "fb", "https://agg/v1/blobs/fb")
+
+	h := NewStreamLegacy(store)
+	req := httptest.NewRequest(http.MethodGet, "/stream/abc123", nil)
+	req.SetPathValue("id", "abc123")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("Deprecation"); got != "true" {
+		t.Errorf("expected Deprecation header, got %q", got)
+	}
+	if got := rec.Header().Get("Sunset"); got != "2026-09-23" {
+		t.Errorf("expected Sunset 2026-09-23, got %q", got)
+	}
+	if got := rec.Header().Get("Link"); got != `</stream/abc123/preview>; rel="successor-version"` {
+		t.Errorf("expected Link header pointing to /preview, got %q", got)
+	}
+}
+
+func TestStreamLegacy_NotFound(t *testing.T) {
+	store := mustNewVideoStore(t)
+	h := NewStreamLegacy(store)
+
+	req := httptest.NewRequest(http.MethodGet, "/stream/unknown", nil)
+	req.SetPathValue("id", "unknown")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
 	}
 }

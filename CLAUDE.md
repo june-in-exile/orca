@@ -32,17 +32,18 @@ go test ./internal/processor/... -run TestValidateMagicBytes -v
 
 ## Architecture
 
-PayLock is a video upload service that stores MP4 files on Walrus decentralized storage (Sui). It accepts MP4 uploads, validates them, uploads directly to Walrus, and serves them via the Walrus aggregator.
+PayLock is a video upload service that stores video files on Walrus decentralized storage (Sui). It accepts video uploads (MP4, MOV, WebM, MKV, AVI), validates them, uploads directly to Walrus, and serves them via the Walrus aggregator.
 
 ```
 cmd/paylock/main.go          — wires all packages; route groups:
                             POST /api/upload, GET /api/status/{id}
                             GET /api/videos, GET /api/videos/by-object/{object_id}
                             DELETE /api/videos/{id}
-                            PUT /api/videos/{id}/sui-object, GET /api/config
+                            PUT /api/videos/{id}, GET /api/config
                             POST /api/reindex
-                            GET /stream/{id}       → canonical: sui_object_id; legacy: paylock_id (307 redirect)
+                            GET /stream/{id}/preview → canonical: sui_object_id; legacy: paylock_id (307 redirect)
                             GET /stream/{id}/full
+                            GET /stream/{id}         → deprecated, redirects to /preview
 
 internal/config/          — env-based config
 internal/model/           — VideoStore (sync.RWMutex + JSON file persistence + sui_object_id secondary index)
@@ -64,5 +65,5 @@ internal/middleware/      — CORS middleware
 - **Canonical ID = sui_object_id**: External discovery and streaming use `sui_object_id`. `paylock_id` is a temporary internal workflow ID used during upload. Stream routes accessed by `paylock_id` redirect to the canonical `sui_object_id` URL when available, with `Deprecation` headers.
 - **Chain reindexer**: On startup, the server scans the Sui chain for all `Video` objects created by the gating package and populates the VideoStore. If `videos.json` is missing, the store is rebuilt from chain state. `POST /api/reindex` triggers a manual reindex.
 - **Stream endpoint redirects**: `GET /stream/{id}` returns a 307 redirect to the Walrus aggregator blob URL. Supports both `paylock_id` and `sui_object_id` lookups.
-- **Only MP4 input is accepted**: Magic bytes check (`ftyp` at offset 4).
+- **Supported video formats**: MP4, MOV (ftyp box), WebM, MKV (EBML header), AVI (RIFF/AVI). Validated by magic bytes, not file extension.
 - **Frontend uses native `<video>`**: No HLS.js dependency. The browser plays MP4 directly from the Walrus aggregator URL (or from decrypted blob URL for paid videos).

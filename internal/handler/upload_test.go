@@ -87,9 +87,7 @@ func TestUpload_ValidMP4_Accepted(t *testing.T) {
 	h := NewUpload(store, videos, newTestConfig())
 
 	req := createMultipartRequest(t, "video", "test.mp4", mp4Data, map[string]string{
-		"title":   "Test Video",
-		"price":   "100000000",
-		"creator": "0xCAFE",
+		"title": "Test Video",
 	})
 	rec := httptest.NewRecorder()
 
@@ -128,6 +126,35 @@ func TestUpload_InvalidPrice(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestUpload_PaidWithoutCreator(t *testing.T) {
+	mp4Data := testutil.TestMP4(t)
+
+	store := &mockStorer{storeFunc: func(data []byte, epochs int) (string, error) {
+		return "blob1", nil
+	}}
+	videos := mustNewVideoStore(t)
+	cfg := newTestConfig()
+	cfg.FFmpegEnabled = true
+	h := NewUpload(store, videos, cfg)
+
+	req := createMultipartRequest(t, "video", "test.mp4", mp4Data, map[string]string{
+		"price": "100000000",
+	})
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for paid upload without creator, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]string
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["error"] == "" {
+		t.Error("expected error message in response")
 	}
 }
 

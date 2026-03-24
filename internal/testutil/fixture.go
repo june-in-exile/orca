@@ -28,7 +28,7 @@ func ProjectRoot(t *testing.T) string {
 // TestMP4 returns the bytes of testdata/test.mp4 from the project root.
 func TestMP4(t *testing.T) []byte {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(ProjectRoot(t), "testdata", "test.mp4"))
+	data, err := os.ReadFile(filepath.Join(ProjectRoot(t), "testdata", "videos", "test_15s.mp4"))
 	if err != nil {
 		t.Fatalf("failed to read testdata/test.mp4: %v", err)
 	}

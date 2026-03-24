@@ -103,7 +103,7 @@ func TestSetSuiObject_RequiresCreatorAuth(t *testing.T) {
 	h := NewSetSuiObject(videos, store)
 
 	body := `{"sui_object_id":"0xOBJ1","full_blob_id":"blob99"}`
-	req := httptest.NewRequest(http.MethodPut, "/api/videos/vid-001/sui-object", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPut, "/api/videos/vid-001", strings.NewReader(body))
 	req.SetPathValue("id", "vid-001")
 	req.Header.Set("X-Creator", "0xBob")
 	rec := httptest.NewRecorder()
@@ -126,7 +126,7 @@ func TestSetSuiObject_AllowsCorrectCreator(t *testing.T) {
 	h := NewSetSuiObject(videos, store)
 
 	body := `{"sui_object_id":"0xOBJ1","full_blob_id":"blob99"}`
-	req := httptest.NewRequest(http.MethodPut, "/api/videos/vid-001/sui-object", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPut, "/api/videos/vid-001", strings.NewReader(body))
 	req.SetPathValue("id", "vid-001")
 	req.Header.Set("X-Creator", "0xAlice")
 	rec := httptest.NewRecorder()

@@ -2,8 +2,33 @@
 
 本文檔提供 PayLock 後端服務的完整 API 規格，專為希望將「影片付費解鎖」功能整合進其 dApp 的開發者設計。
 
-> **認證**: 變更類操作 (`PUT`, `DELETE`) 需要 `X-Creator` header，值為影片創作者的 Sui 地址。伺服器會比對該地址與影片記錄中的 `creator` 欄位。若影片無 `creator`，則不做檢查。
-> **CORS**: Stream 端點 (`/stream/*`) 已啟用 CORS；API 端點 (`/api/*`) 未設 CORS header。
+---
+
+## 目錄
+
+- [核心流程總覽](#核心流程總覽)
+- [共用格式](#共用格式)
+  - [影片狀態 (Status)](#影片狀態-status)
+  - [Video 物件完整欄位](#video-物件完整欄位)
+  - [錯誤回應格式](#錯誤回應格式)
+- [API 端點](#api-端點)
+  - [1. 上傳影片 — `POST /api/upload`](#1-上傳影片)
+  - [2. 查詢影片狀態 — `GET /api/status/{id}`](#2-查詢影片狀態)
+  - [3. 即時狀態追蹤 (SSE) — `GET /api/status/{id}/events`](#3-即時狀態追蹤-sse)
+  - [4. 關聯鏈上物件 — `PUT /api/videos/{id}`](#4-關聯鏈上物件)
+  - [5. 以鏈上物件 ID 查詢影片 — `GET /api/videos/by-object/{object_id}`](#5-以鏈上物件-id-查詢影片)
+  - [6. 列出所有影片 — `GET /api/videos`](#6-列出所有影片)
+  - [7. 刪除影片 — `DELETE /api/videos/{id}`](#7-刪除影片)
+  - [8. 預覽串流 — `GET /stream/{id}/preview`](#8-預覽串流)
+  - [9. 完整版串流 — `GET /stream/{id}/full`](#9-完整版串流)
+  - [10. 系統配置 — `GET /api/config`](#10-系統配置)
+  - [11. 手動重新索引 — `POST /api/reindex`](#11-手動重新索引)
+- [付費解鎖整合指南](#付費解鎖整合指南)
+  - [Step 1: 加密上傳（創作者端）](#step-1-加密上傳創作者端)
+  - [Step 2: 鏈上發布（創作者端）](#step-2-鏈上發布創作者端)
+  - [Step 3: 購買（觀眾端）](#step-3-購買觀眾端)
+  - [Step 4: 解密播放（觀眾端）](#step-4-解密播放觀眾端)
+  - [Move 合約參考](#move-合約參考-paylockgating)
 
 ---
 
@@ -26,7 +51,7 @@ POST /api/upload (price>0)
     → GET /api/status/{id}/events (SSE) 等待 status=ready
     → 前端以 Seal SDK 加密原始影片 → 上傳加密 Blob 至 Walrus → 取得 full_blob_id
     → 前端發 Sui 交易呼叫 gating::create_video (帶 price, preview_blob_id, full_blob_id, seal_namespace)
-    → PUT /api/videos/{id}/sui-object (回寫 sui_object_id + full_blob_id)
+    → PUT /api/videos/{id} (回寫 sui_object_id + full_blob_id)
     → 購買者: purchase_and_transfer → seal_approve → Seal 解密 → 播放
 ```
 
@@ -95,9 +120,9 @@ POST /api/upload (price>0)
 | `video` | 是 | 影片檔案 |
 | `title` | 否 | 影片標題，未提供則自動產生 |
 | `price` | 否 | 價格 (MIST, uint64)。`0` 或未提供 = 免費影片 |
-| `creator` | 否 | 創作者的 Sui 地址 |
+| `creator` | 條件必填 | 創作者的 Sui 地址。`price > 0` 時必填 |
 
-> **付費上傳限制**: `price > 0` 時，伺服器必須啟用 FFmpeg (`PAYLOCK_ENABLE_FFMPEG=true`)，否則回傳 `400`。
+> **付費上傳限制**: `price > 0` 時，必須提供 `creator` 且伺服器必須啟用 FFmpeg (`PAYLOCK_ENABLE_FFMPEG=true`)，否則回傳 `400`。
 
 **成功回應** (`202 Accepted`):
 
@@ -112,7 +137,7 @@ POST /api/upload (price>0)
 
 | Status | 原因 |
 |--------|------|
-| `400` | 無法讀取檔案 / 格式不支援 / price 非正整數 / 付費上傳但 FFmpeg 未啟用 |
+| `400` | 無法讀取檔案 / 格式不支援 / price 非正整數 / 付費上傳缺少 creator / 付費上傳但 FFmpeg 未啟用 |
 | `413` | 檔案超過大小上限 |
 
 ---
@@ -145,14 +170,14 @@ data: {"id":"...","status":"processing","title":"My Video","price":0,"created_at
 
 data: {"id":"...","status":"ready","preview_blob_id":"...","preview_blob_url":"...","full_blob_id":"...","full_blob_url":"...","created_at":"..."}
 ```
-k54
+
 連線在 `status` 變為 `ready` 或 `failed` 後由伺服器關閉。
 
 ---
 
 ### 4. 關聯鏈上物件
 
-**`PUT /api/videos/{id}/sui-object`**
+**`PUT /api/videos/{id}`**
 
 前端完成鏈上 `create_video` 交易後，將 Sui 物件 ID 與加密完整 Blob ID 寫回後端。
 
@@ -192,7 +217,24 @@ k54
 
 ---
 
-### 5. 列出所有影片
+### 5. 以鏈上物件 ID 查詢影片
+
+**`GET /api/videos/by-object/{object_id}`**
+
+以 Sui 鏈上的 `sui_object_id` 查詢對應的影片 Metadata。
+
+**成功回應** (`200 OK`): 回傳完整 Video 物件（見上方欄位定義）。
+
+**錯誤回應**:
+
+| Status | 原因            |
+|--------|-----------------|
+| `400`  | 缺少 object_id  |
+| `404`  | 影片不存在      |
+
+---
+
+### 6. 列出所有影片
 
 **`GET /api/videos`**
 
@@ -222,7 +264,7 @@ k54
 
 ---
 
-### 6. 刪除影片
+### 7. 刪除影片
 
 **`DELETE /api/videos/{id}`**
 
@@ -247,15 +289,17 @@ k54
 
 ---
 
-### 7. 預覽串流
+### 8. 預覽串流
 
-**`GET /stream/{id}`**
+**`GET /stream/{id}/preview`**
 
 307 Redirect 至預覽版在 Walrus 上的公開 URL。任何人皆可存取。
 
 ```html
-<video src="https://your-paylock-host/stream/{id}"></video>
+<video src="https://your-paylock-host/stream/{id}/preview"></video>
 ```
+
+> **已棄用路徑**: `GET /stream/{id}` 仍可使用，會 307 Redirect 至 `/stream/{id}/preview` 並附帶 `Deprecation` header。預計 2026-09-23 移除。
 
 **錯誤回應**:
 
@@ -268,7 +312,7 @@ k54
 
 ---
 
-### 8. 完整版串流
+### 9. 完整版串流
 
 **`GET /stream/{id}/full`**
 
@@ -278,7 +322,7 @@ k54
 
 ---
 
-### 9. 系統配置
+### 10. 系統配置
 
 **`GET /api/config`**
 
@@ -294,6 +338,38 @@ k54
   "walrus_aggregator_url": "https://aggregator.walrus-testnet.walrus.space"
 }
 ```
+
+---
+
+### 11. 手動重新索引
+
+**`POST /api/reindex`**
+
+觸發從 Sui 鏈上重新掃描所有 Video 物件，將缺少的記錄補入本地 VideoStore。啟動時伺服器會自動執行一次，此端點供手動觸發。
+
+- **需要認證**: 須附帶 `Authorization: Bearer <PAYLOCK_ADMIN_SECRET>` header。若未設定 `PAYLOCK_ADMIN_SECRET` 環境變數，此端點永遠回傳 `401`。
+
+**成功回應** (`200 OK`):
+
+```json
+{
+  "status": "ok",
+  "chain_total": 120,
+  "new_entries": 3
+}
+```
+
+| 欄位           | 說明                         |
+|----------------|------------------------------|
+| `chain_total`  | 鏈上掃描到的 Video 物件總數  |
+| `new_entries`  | 本次新增至本地 Store 的筆數  |
+
+**錯誤回應**:
+
+| Status | 原因                         |
+|--------|------------------------------|
+| `401`  | 缺少或無效的 admin secret    |
+| `500`  | 鏈上掃描失敗                 |
 
 ---
 
@@ -363,7 +439,7 @@ tx.moveCall({
 交易成功後，回寫後端：
 
 ```js
-await fetch(`/api/videos/${videoId}/sui-object`, {
+await fetch(`/api/videos/${videoId}`, {
   method: 'PUT',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
