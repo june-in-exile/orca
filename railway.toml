@@ -1,6 +1,6 @@
 [build]
-builder = "NIXPACKS"
+builder = "DOCKERFILE"
 
 [env]
 PAYLOCK_PORT = "${{PORT}}"
-PAYLOCK_DATA_DIR = "/tmp/data"
+PAYLOCK_DATA_DIR = "/data"

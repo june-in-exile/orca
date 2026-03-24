@@ -14,6 +14,7 @@ type Config struct {
 	WalrusPublisher  string
 	WalrusAggregator string
 	WalrusEpochs     int
+	FFmpegEnabled    bool
 	FFmpegPath       string
 	FFprobePath      string
 	PreviewDuration  int
@@ -32,6 +33,7 @@ func Load() (*Config, error) {
 		WalrusAggregator: envOrDefault("PAYLOCK_WALRUS_AGGREGATOR_URL", "https://aggregator.walrus-testnet.walrus.space"),
 		WalrusEpochs:     5,
 		DataDir:          envOrDefault("PAYLOCK_DATA_DIR", "data"),
+		FFmpegEnabled:    envBoolOrDefault("PAYLOCK_ENABLE_FFMPEG", false),
 		FFmpegPath:       envOrDefault("PAYLOCK_FFMPEG_PATH", "ffmpeg"),
 		FFprobePath:      envOrDefault("PAYLOCK_FFPROBE_PATH", "ffprobe"),
 		PreviewDuration:  10,
@@ -71,4 +73,16 @@ func envOrDefault(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func envBoolOrDefault(key string, fallback bool) bool {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	val, err := strconv.ParseBool(v)
+	if err != nil {
+		return fallback
+	}
+	return val
 }

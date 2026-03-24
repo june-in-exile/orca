@@ -29,9 +29,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := processor.CheckFFmpeg(cfg.FFmpegPath); err != nil {
-		slog.Error("ffmpeg is required but not found", "error", err)
-		os.Exit(1)
+	if cfg.FFmpegEnabled {
+		if err := processor.CheckFFmpeg(cfg.FFmpegPath); err != nil {
+			slog.Error("ffmpeg is required but not found", "error", err)
+			os.Exit(1)
+		}
+	} else {
+		slog.Info("ffmpeg disabled; skipping preview/thumbnail processing")
 	}
 
 	wc := walrus.NewClient(cfg.WalrusPublisher, cfg.WalrusAggregator)

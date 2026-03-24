@@ -31,6 +31,7 @@ func newTestConfig() *config.Config {
 	return &config.Config{
 		MaxFileSize:     500 * 1024 * 1024,
 		WalrusEpochs:    1,
+		FFmpegEnabled:   false,
 		FFmpegPath:      "ffmpeg",
 		PreviewDuration: 2,
 	}

@@ -100,16 +100,23 @@ func (h *Upload) processAndUpload(id string, data []byte) {
 		return
 	}
 
-	previewData, err := processor.ExtractPreview(data, h.cfg.PreviewDuration, h.cfg.FFmpegPath)
-	if err != nil {
-		slog.Error("preview extraction failed", "id", id, "error", err)
-		h.videos.SetFailed(id, "preview extraction failed: "+err.Error())
-		return
-	}
+	previewData := data
+	var thumbnailData []byte
+	if h.cfg.FFmpegEnabled {
+		var err error
+		previewData, err = processor.ExtractPreview(data, h.cfg.PreviewDuration, h.cfg.FFmpegPath)
+		if err != nil {
+			slog.Error("preview extraction failed", "id", id, "error", err)
+			h.videos.SetFailed(id, "preview extraction failed: "+err.Error())
+			return
+		}
 
-	thumbnailData, err := processor.ExtractThumbnail(data, h.cfg.FFmpegPath)
-	if err != nil {
-		slog.Warn("thumbnail extraction failed, continuing without thumbnail", "id", id, "error", err)
+		thumbnailData, err = processor.ExtractThumbnail(data, h.cfg.FFmpegPath)
+		if err != nil {
+			slog.Warn("thumbnail extraction failed, continuing without thumbnail", "id", id, "error", err)
+		}
+	} else {
+		slog.Info("ffmpeg disabled; using full file as preview", "id", id)
 	}
 
 	// Paid videos: upload only preview + thumbnail; full blob is encrypted + uploaded by the frontend
@@ -134,10 +141,30 @@ func (h *Upload) processAndUpload(id string, data []byte) {
 	// Free videos: upload thumbnail, preview, and full blobs
 	thumbBlobID, thumbBlobURL := h.uploadThumbnail(id, thumbnailData)
 
-	fastData, err := processor.EnsureFaststart(data, h.cfg.FFmpegPath)
-	if err != nil {
-		slog.Warn("faststart failed, uploading original", "id", id, "error", err)
-		fastData = data
+	fastData := data
+	if h.cfg.FFmpegEnabled {
+		var err error
+		fastData, err = processor.EnsureFaststart(data, h.cfg.FFmpegPath)
+		if err != nil {
+			slog.Warn("faststart failed, uploading original", "id", id, "error", err)
+			fastData = data
+		}
+	}
+
+	if !h.cfg.FFmpegEnabled || bytes.Equal(previewData, fastData) {
+		fullBlobID, err := h.walrus.Store(fastData, h.cfg.WalrusEpochs)
+		if err != nil {
+			slog.Error("walrus upload failed", "id", id, "error", err)
+			h.videos.SetFailed(id, "upload to Walrus failed: "+err.Error())
+			return
+		}
+		fullBlobURL := h.walrus.BlobURL(fullBlobID)
+		h.videos.SetReady(id, thumbBlobID, thumbBlobURL, fullBlobID, fullBlobURL, fullBlobID, fullBlobURL)
+		slog.Info("video uploaded to walrus (single blob)",
+			"id", id,
+			"full_blob_id", fullBlobID,
+		)
+		return
 	}
 
 	previewBlobID, fullBlobID, err := h.uploadBothBlobs(previewData, fastData)
