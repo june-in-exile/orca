@@ -680,3 +680,74 @@ h2 {
   background: var(--success);
   display: inline-block;
 }
+
+.wallet-area {
+  position: relative;
+}
+
+.wallet-chevron {
+  display: inline-block;
+  transition: transform 0.2s;
+  font-size: 0.8em;
+  margin-left: 0.25rem;
+}
+.wallet-chevron.open {
+  transform: rotate(180deg);
+}
+
+.wallet-dropdown {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  min-width: 220px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 0.5rem 0;
+  z-index: 100;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.wallet-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--text);
+  transition: background 0.15s;
+}
+.wallet-dropdown-item:hover {
+  background: var(--surface-hover);
+}
+
+.wallet-dropdown-item.active {
+  color: #fff;
+  font-weight: 600;
+}
+
+.wallet-dropdown-addr {
+  font-family: monospace;
+  font-size: 0.9rem;
+}
+
+.wallet-dropdown-check {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.wallet-dropdown-divider {
+  height: 1px;
+  background: #333;
+  margin: 0.25rem 0;
+}
+
+.wallet-dropdown-item.disconnect {
+  color: var(--accent);
+  font-weight: 600;
+}
+.wallet-dropdown-item.disconnect:hover {
+  color: var(--accent-hover);
+}

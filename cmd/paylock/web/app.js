@@ -8,20 +8,56 @@ import { PlayerView } from './player-view.js';
 
 function Header() {
   const wallet = walletState.value;
-  const shortAddr = wallet.address
-    ? wallet.address.slice(0, 6) + '...' + wallet.address.slice(-4)
-    : '';
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const shortAddr = (addr) => addr ? addr.slice(0, 6) + '...' + addr.slice(-4) : '';
 
-  async function handleWalletClick() {
+  async function handleConnectClick() {
     const mod = await loadWallet();
     mod.connectWallet();
+    setDropdownOpen(false);
   }
 
-  const btnLabel = !wallet.available
-    ? (wallet.error || 'Wallet Unavailable')
-    : wallet.error
-      ? wallet.error
-      : wallet.connected ? 'Disconnect' : 'Connect Wallet';
+  async function handleDisconnect() {
+    const mod = await loadWallet();
+    mod.disconnectWallet();
+    setDropdownOpen(false);
+  }
+
+  async function handleSwitch(index) {
+    const mod = await loadWallet();
+    mod.switchAccount(index);
+    setDropdownOpen(false);
+  }
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    function onClickOutside(e) {
+      if (!e.target.closest('.wallet-area')) setDropdownOpen(false);
+    }
+    document.addEventListener('click', onClickOutside);
+    return () => document.removeEventListener('click', onClickOutside);
+  }, [dropdownOpen]);
+
+  if (!wallet.connected) {
+    return html`
+      <header>
+        <div class="logo" onclick=${() => navigate('videos')}>
+          <span class="logo-text">Pay</span><span class="logo-box">Lock</span>
+        </div>
+        <div class="wallet-area">
+          <button
+            class="wallet-btn connect"
+            disabled=${!wallet.available}
+            style=${!wallet.available ? 'opacity:0.5;cursor:not-allowed' : ''}
+            onclick=${handleConnectClick}
+          >
+            ${!wallet.available ? (wallet.error || 'Wallet Unavailable') : wallet.error ? wallet.error : 'Connect Wallet'}
+          </button>
+        </div>
+      </header>
+    `;
+  }
 
   return html`
     <header>
@@ -29,21 +65,35 @@ function Header() {
         <span class="logo-text">Pay</span><span class="logo-box">Lock</span>
       </div>
       <div class="wallet-area">
-        ${wallet.connected && html`
-          <div class="wallet-info" style="display:flex;">
-            <span class="wallet-dot"></span>
-            <span class="wallet-balance">${wallet.balance || '0 SUI'}</span>
-            <span class="wallet-addr">${shortAddr}</span>
+        <div class="wallet-info">
+          <span class="wallet-dot"></span>
+          <span class="wallet-balance">${wallet.balance || '0 SUI'}</span>
+        </div>
+        <button
+          class="wallet-btn connected"
+          onclick=${(e) => { e.stopPropagation(); setDropdownOpen(!dropdownOpen); }}
+        >
+          ${shortAddr(wallet.address)}${' '}
+          <span class="wallet-chevron ${dropdownOpen ? 'open' : ''}">▾</span>
+        </button>
+        ${dropdownOpen && html`
+          <div class="wallet-dropdown">
+            ${wallet.accounts.map((acct, i) => html`
+              <div
+                class="wallet-dropdown-item ${i === wallet.activeIndex ? 'active' : ''}"
+                key=${acct.address}
+                onclick=${() => handleSwitch(i)}
+              >
+                <span class="wallet-dropdown-addr">${shortAddr(acct.address)}</span>
+                ${i === wallet.activeIndex && html`<span class="wallet-dropdown-check">✓</span>`}
+              </div>
+            `)}
+            <div class="wallet-dropdown-divider"></div>
+            <div class="wallet-dropdown-item disconnect" onclick=${handleDisconnect}>
+              Disconnect
+            </div>
           </div>
         `}
-        <button
-          class=${wallet.connected ? 'wallet-btn connected' : 'wallet-btn connect'}
-          disabled=${!wallet.available}
-          style=${!wallet.available ? 'opacity:0.5;cursor:not-allowed' : ''}
-          onclick=${handleWalletClick}
-        >
-          ${btnLabel}
-        </button>
       </div>
     </header>
   `;

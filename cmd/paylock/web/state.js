@@ -15,6 +15,8 @@ export const walletState = signal({
   balance: null,
   available: true,
   error: null,
+  accounts: [],    // [{ address, balance, wallet }]
+  activeIndex: -1, // index into accounts[]
 });
 
 // Upload

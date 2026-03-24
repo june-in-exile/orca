@@ -14,6 +14,8 @@ let connectedAccount = null;
 let suiClient = null;
 let discoveredWallets = [];
 let unsubscribeWalletEvents = null;
+let connectedAccounts = []; // [{ address, balance, wallet, account }]
+let activeAccountIndex = -1;
 let Transaction = null;
 let signAndExecuteTransaction = null;
 let paywallPackageId = null;
@@ -46,24 +48,31 @@ async function fetchAppConfig() {
 }
 
 function syncWalletSignal() {
+  const active = connectedAccounts[activeAccountIndex];
   walletState.value = {
-    connected: !!connectedAccount,
-    address: connectedAccount ? connectedAccount.address : null,
-    balance: walletState.value.balance,
+    connected: !!active,
+    address: active ? active.address : null,
+    balance: active ? active.balance : null,
     available: true,
     error: null,
+    accounts: connectedAccounts.map((a) => ({ address: a.address, balance: a.balance })),
+    activeIndex: activeAccountIndex,
   };
 }
 
-async function refreshBalance() {
-  if (!connectedAccount || !suiClient) return;
-  try {
-    const balance = await suiClient.getBalance({ owner: connectedAccount.address });
-    const suiAmount = (Number(balance.totalBalance) / 1_000_000_000).toFixed(4);
-    walletState.value = { ...walletState.value, balance: suiAmount + ' SUI' };
-  } catch (_) {
-    walletState.value = { ...walletState.value, balance: '-- SUI' };
-  }
+async function refreshAllBalances() {
+  if (!suiClient) return;
+  await Promise.all(
+    connectedAccounts.map(async (acct) => {
+      try {
+        const bal = await suiClient.getBalance({ owner: acct.address });
+        acct.balance = (Number(bal.totalBalance) / 1_000_000_000).toFixed(4) + ' SUI';
+      } catch (_) {
+        acct.balance = '-- SUI';
+      }
+    }),
+  );
+  syncWalletSignal();
 }
 
 export async function initWallet() {
@@ -115,8 +124,8 @@ export async function initWallet() {
           discoveredWallets.push(w);
         }
       }
-      const savedAddr = sessionStorage.getItem('paylock_wallet_addr');
-      if (savedAddr && !connectedWallet && findSlushWallet()) {
+      const savedAddrs = sessionStorage.getItem('paylock_wallet_addrs');
+      if (savedAddrs && !connectedWallet && findSlushWallet()) {
         autoReconnect();
       }
     });
@@ -139,8 +148,8 @@ export async function initWallet() {
       // Slush wallet registration can fail on unsupported origins
     }
 
-    const savedAddr = sessionStorage.getItem('paylock_wallet_addr');
-    if (savedAddr && findSlushWallet()) {
+    const savedAddrs = sessionStorage.getItem('paylock_wallet_addrs');
+    if (savedAddrs && findSlushWallet()) {
       await autoReconnect();
     }
   } catch (_) {
@@ -160,23 +169,37 @@ async function autoReconnect() {
     if (!slush) return;
     const connectFeature = slush.features['standard:connect'];
     const result = await connectFeature.connect({ silent: true });
-    if (result.accounts && result.accounts.length > 0) {
-      connectedWallet = slush;
-      connectedAccount = result.accounts[0];
-      syncWalletSignal();
-      await refreshBalance();
+    if (!result.accounts || result.accounts.length === 0) return;
+
+    for (const acct of result.accounts) {
+      if (!connectedAccounts.some((a) => a.address === acct.address)) {
+        connectedAccounts.push({ address: acct.address, balance: null, wallet: slush, account: acct });
+      }
     }
+
+    // Restore active index from saved state
+    const savedActive = sessionStorage.getItem('paylock_active_addr');
+    activeAccountIndex = Math.max(0, connectedAccounts.findIndex((a) => a.address === savedActive));
+    connectedWallet = slush;
+    connectedAccount = connectedAccounts[activeAccountIndex].account;
+
+    syncWalletSignal();
+    await refreshAllBalances();
   } catch (_) {
+    sessionStorage.removeItem('paylock_wallet_addrs');
+    sessionStorage.removeItem('paylock_active_addr');
     sessionStorage.removeItem('paylock_wallet_addr');
   }
 }
 
-export async function connectWallet() {
-  if (connectedWallet) {
-    await disconnectWallet();
-    return;
-  }
+function saveSessions() {
+  const addrs = connectedAccounts.map((a) => a.address);
+  sessionStorage.setItem('paylock_wallet_addrs', JSON.stringify(addrs));
+  const active = connectedAccounts[activeAccountIndex];
+  if (active) sessionStorage.setItem('paylock_active_addr', active.address);
+}
 
+export async function connectWallet() {
   try {
     const slush = findSlushWallet();
     if (!slush) {
@@ -188,11 +211,31 @@ export async function connectWallet() {
     const result = await connectFeature.connect();
 
     if (result.accounts.length > 0) {
-      connectedWallet = slush;
-      connectedAccount = result.accounts[0];
-      sessionStorage.setItem('paylock_wallet_addr', connectedAccount.address);
+      let addedNew = false;
+      for (const acct of result.accounts) {
+        if (!connectedAccounts.some((a) => a.address === acct.address)) {
+          connectedAccounts.push({ address: acct.address, balance: null, wallet: slush, account: acct });
+          addedNew = true;
+        }
+      }
+
+      // Switch to the first newly added account, or the first returned account
+      if (addedNew) {
+        const newAddr = result.accounts.find(
+          (a) => connectedAccounts.some((ca) => ca.address === a.address),
+        );
+        activeAccountIndex = connectedAccounts.findIndex((a) => a.address === newAddr.address);
+      } else {
+        // All accounts already connected — switch to the first returned one
+        activeAccountIndex = connectedAccounts.findIndex((a) => a.address === result.accounts[0].address);
+      }
+
+      const active = connectedAccounts[activeAccountIndex];
+      connectedWallet = active.wallet;
+      connectedAccount = active.account;
+      saveSessions();
       syncWalletSignal();
-      await refreshBalance();
+      await refreshAllBalances();
     }
   } catch (_) {
     walletState.value = { ...walletState.value, error: 'Connection Failed' };
@@ -202,19 +245,36 @@ export async function connectWallet() {
   }
 }
 
+export function switchAccount(index) {
+  if (index < 0 || index >= connectedAccounts.length) return;
+  activeAccountIndex = index;
+  const active = connectedAccounts[activeAccountIndex];
+  connectedWallet = active.wallet;
+  connectedAccount = active.account;
+  saveSessions();
+  syncWalletSignal();
+}
+
 export async function disconnectWallet() {
-  if (connectedWallet) {
+  const wallets = new Set(connectedAccounts.map((a) => a.wallet));
+  for (const w of wallets) {
     try {
-      const disconnectFeature = connectedWallet.features['standard:disconnect'];
-      if (disconnectFeature) await disconnectFeature.disconnect();
+      const feat = w.features['standard:disconnect'];
+      if (feat) await feat.disconnect();
     } catch (_) {
       // disconnect is best-effort
     }
   }
   connectedWallet = null;
   connectedAccount = null;
-  sessionStorage.removeItem('paylock_wallet_addr');
-  walletState.value = { connected: false, address: null, balance: null, available: true, error: null };
+  connectedAccounts = [];
+  activeAccountIndex = -1;
+  sessionStorage.removeItem('paylock_wallet_addrs');
+  sessionStorage.removeItem('paylock_active_addr');
+  walletState.value = {
+    connected: false, address: null, balance: null,
+    available: true, error: null, accounts: [], activeIndex: -1,
+  };
 }
 
 export async function createVideoOnChain(videoId, price, previewBlobId, fullBlobId, sealNamespace) {
