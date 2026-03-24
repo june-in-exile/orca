@@ -18,6 +18,16 @@ func NewVideos(videos *model.VideoStore) *Videos {
 func (h *Videos) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	list := h.videos.List()
 
+	if creator := r.URL.Query().Get("creator"); creator != "" {
+		filtered := make([]model.Video, 0, len(list))
+		for _, v := range list {
+			if v.Creator == creator {
+				filtered = append(filtered, v)
+			}
+		}
+		list = filtered
+	}
+
 	// Sort by created_at descending (newest first)
 	sort.Slice(list, func(i, j int) bool {
 		return list[i].CreatedAt > list[j].CreatedAt

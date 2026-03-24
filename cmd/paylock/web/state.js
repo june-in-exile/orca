@@ -1,7 +1,7 @@
 import { signal, batch } from './lib.js';
 
 // Navigation
-export const currentView = signal('videos');
+export const currentView = signal('my-videos');
 export const viewParams = signal({});
 export const navGeneration = signal(0);
 
@@ -55,8 +55,10 @@ export function navigate(view, params = {}, push = true) {
     currentVideo.value = null;
   });
 
-  if (view === 'videos') {
+  if (view === 'my-videos') {
     if (push) history.pushState({ view }, '', '/');
+  } else if (view === 'browse') {
+    if (push) history.pushState({ view }, '', '/browse');
   } else if (view === 'player' && params.id) {
     if (push) history.pushState({ view, id: params.id }, '', '/play/' + params.id);
   }

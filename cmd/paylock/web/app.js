@@ -3,7 +3,8 @@ import {
   currentView, walletState, toastState,
   navigate, loadWallet, stageNewFile,
 } from './state.js';
-import { VideosView } from './videos-view.js';
+import { MyVideosView } from './my-videos-view.js';
+import { BrowseView } from './browse-view.js';
 import { PlayerView } from './player-view.js';
 
 function Header() {
@@ -39,12 +40,17 @@ function Header() {
     return () => document.removeEventListener('click', onClickOutside);
   }, [dropdownOpen]);
 
+  const view = currentView.value;
+
   if (!wallet.connected) {
     return html`
       <header>
-        <div class="logo" onclick=${() => navigate('videos')}>
+        <div class="logo" onclick=${() => navigate('my-videos')}>
           <span class="logo-text">Pay</span><span class="logo-box">Lock</span>
         </div>
+        <nav class="nav-links">
+          <a class=${'nav-link' + (view === 'browse' ? ' active' : '')} onclick=${() => navigate('browse')}>Browse</a>
+        </nav>
         <div class="wallet-area">
           <button
             class="wallet-btn connect"
@@ -61,9 +67,13 @@ function Header() {
 
   return html`
     <header>
-      <div class="logo" onclick=${() => navigate('videos')}>
+      <div class="logo" onclick=${() => navigate('my-videos')}>
         <span class="logo-text">Pay</span><span class="logo-box">Lock</span>
       </div>
+      <nav class="nav-links">
+        <a class=${'nav-link' + (view === 'my-videos' ? ' active' : '')} onclick=${() => navigate('my-videos')}>My Videos</a>
+        <a class=${'nav-link' + (view === 'browse' ? ' active' : '')} onclick=${() => navigate('browse')}>Browse</a>
+      </nav>
       <div class="wallet-area">
         <div class="wallet-info">
           <span class="wallet-dot"></span>
@@ -132,7 +142,7 @@ function App() {
       e.preventDefault();
       dragCounter = 0;
       setDragging(false);
-      if (e.dataTransfer.files.length > 0) stageNewFile(e.dataTransfer.files[0]);
+      if (e.dataTransfer.files.length > 0 && currentView.value === 'my-videos') stageNewFile(e.dataTransfer.files[0]);
     }
 
     window.addEventListener('dragenter', onDragEnter);
@@ -154,8 +164,10 @@ function App() {
       const path = window.location.pathname;
       if (path.startsWith('/play/')) {
         navigate('player', { id: path.slice(6) }, false);
+      } else if (path === '/browse') {
+        navigate('browse', {}, false);
       } else {
-        navigate('videos', {}, false);
+        navigate('my-videos', {}, false);
       }
     }
 
@@ -171,7 +183,8 @@ function App() {
     <${Header} />
     <${DragOverlay} active=${dragging} />
     <main>
-      ${view === 'videos' && html`<${VideosView} />`}
+      ${view === 'my-videos' && html`<${MyVideosView} />`}
+      ${view === 'browse' && html`<${BrowseView} />`}
       ${view === 'player' && html`<${PlayerView} />`}
     </main>
     <${Toast} />

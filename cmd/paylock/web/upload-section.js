@@ -1,9 +1,8 @@
-import { html, useState, useEffect, useRef, useCallback } from './lib.js';
+import { html, useRef, useCallback } from './lib.js';
 import {
   stagedFile, uploadState, navigate, showToast,
-  formatDate, formatFileSize, formatSui,
-  stageNewFile, clearStagedFile, loadWallet, walletState,
-  navGeneration,
+  formatFileSize, stageNewFile, clearStagedFile,
+  loadWallet, walletState,
 } from './state.js';
 
 function stepCls(status) {
@@ -79,28 +78,21 @@ function UploadProgress() {
   `;
 }
 
-function StagedFilePreview() {
+function StagedFilePreview({ inputRef }) {
   const staged = stagedFile.value;
-  const videoRef = useRef(null);
-
-  useEffect(() => {
-    if (videoRef.current && staged) {
-      videoRef.current.src = staged.objectUrl;
-    }
-  }, [staged]);
 
   if (!staged) return null;
 
   return html`
     <div class="staged-file active">
       <div class="staged-file-preview">
-        <video ref=${videoRef} muted></video>
+        <video src=${staged.objectUrl} muted></video>
       </div>
       <div class="staged-file-info">
         <div class="staged-file-name">${staged.name}</div>
         <div class="staged-file-size">${formatFileSize(staged.size)}</div>
         <div class="staged-file-actions">
-          <button class="btn btn-outline" onclick=${() => fileInputRef.current && fileInputRef.current.click()}>
+          <button class="btn btn-outline" onclick=${() => inputRef.current && inputRef.current.click()}>
             Change File
           </button>
           <button class="btn btn-outline" onclick=${clearStagedFile}>Remove</button>
@@ -108,61 +100,6 @@ function StagedFilePreview() {
       </div>
     </div>
   `;
-}
-
-// Shared ref for the hidden file input (set by VideosView)
-let fileInputRef = { current: null };
-
-function VideoCard({ video }) {
-  const safeStatus = ['ready', 'processing', 'failed'].includes(video.status) ? video.status : 'failed';
-  const isPaid = video.price > 0;
-
-  return html`
-    <div class="video-card">
-      <div class="video-thumb" style="cursor:pointer" onclick=${() => navigate('player', { id: video.id })}>
-        ${video.thumbnail_blob_url && video.status === 'ready'
-          ? html`
-              <img src=${video.thumbnail_blob_url} alt=${video.title || video.id}
-                style="width:100%;height:100%;object-fit:cover;" />
-              <div class="play-overlay">\u25B6</div>
-            `
-          : video.status === 'ready' ? '\u25B6' : '\u2026'}
-      </div>
-      <div class="video-info">
-        <div class="video-id" style="cursor:pointer" onclick=${() => navigate('player', { id: video.id })}>
-          ${video.title || video.id}
-        </div>
-        <div class="video-meta">
-          <span style="font-family:monospace">ID: ${video.id.slice(0, 8)}</span>
-          <span class=${'status-badge ' + safeStatus}>${video.status}</span>
-          <span class=${isPaid ? 'price-badge paid' : 'price-badge free'}>
-            ${isPaid ? formatSui(video.price) + ' SUI' : 'Free'}
-          </span>
-          <span>${formatDate(video.created_at)}</span>
-        </div>
-      </div>
-      <div class="video-actions">
-        <button class="btn btn-sm btn-danger" onclick=${(e) => { e.stopPropagation(); deleteVideo(video.id); }}>
-          Delete
-        </button>
-      </div>
-    </div>
-  `;
-}
-
-async function deleteVideo(id) {
-  if (!confirm('Are you sure you want to delete this video? This action cannot be undone.')) return;
-  try {
-    const res = await fetch('/api/videos/' + encodeURIComponent(id), { method: 'DELETE' });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      alert(data.error || 'Failed to delete video.');
-      return;
-    }
-    navigate('videos');
-  } catch (err) {
-    alert('Failed to delete video: ' + err.message);
-  }
 }
 
 function sendUpload(formData, fileName) {
@@ -285,25 +222,9 @@ async function confirmUpload(fileInput) {
   }
 }
 
-export function VideosView() {
-  const [videos, setVideos] = useState([]);
-  const [loadError, setLoadError] = useState(null);
+export function UploadSection() {
   const inputRef = useRef(null);
-  fileInputRef = inputRef;
   const staged = stagedFile.value;
-
-  const generation = navGeneration.value;
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/videos')
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to load');
-        return res.json();
-      })
-      .then((data) => { if (!cancelled) setVideos(data.videos || []); })
-      .catch(() => { if (!cancelled) setLoadError('Cannot connect to server.'); });
-    return () => { cancelled = true; };
-  }, [generation]);
 
   const handleUploadAction = useCallback(() => {
     if (staged) {
@@ -318,7 +239,7 @@ export function VideosView() {
   }, []);
 
   return html`
-    <div class="view active">
+    <div>
       <${UploadProgress} />
 
       <div style="margin-bottom: 1.5rem; padding: 1.25rem; background: var(--surface); border-radius: 8px;">
@@ -334,10 +255,9 @@ export function VideosView() {
         <input type="number" id="video-price" placeholder="0" min="0" step="0.01"
           style="width: 100%; padding: 0.6rem 0.75rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 0.9rem; margin-bottom: 1rem;" />
 
-        <${StagedFilePreview} />
+        <${StagedFilePreview} inputRef=${inputRef} />
 
-        <div style="display:flex; align-items:center; justify-content:space-between;">
-          <h2 style="margin-bottom:0;">Videos</h2>
+        <div style="display:flex; align-items:center; justify-content:flex-end;">
           <div style="display:flex; gap:0.75rem; align-items:center;">
             <button class="btn" onclick=${handleUploadAction}>
               ${staged ? 'Confirm Upload' : 'Select Video'}
@@ -345,18 +265,6 @@ export function VideosView() {
             <input type="file" ref=${inputRef} accept="video/mp4,video/quicktime,video/webm,video/x-matroska,video/avi,.mp4,.mov,.webm,.mkv,.avi" style="display:none" onchange=${onFileChange} />
           </div>
         </div>
-      </div>
-
-      <div>
-        ${loadError
-          ? html`<div class="empty-state"><p>${loadError}</p></div>`
-          : videos.length === 0
-            ? html`<div class="empty-state"><p>No videos yet. Drag and drop a file or click Select MP4.</p></div>`
-            : html`
-                <div class="video-grid">
-                  ${videos.map((v) => html`<${VideoCard} key=${v.id} video=${v} />`)}
-                </div>
-              `}
       </div>
     </div>
   `;

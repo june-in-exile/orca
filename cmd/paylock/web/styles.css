@@ -52,6 +52,34 @@ header {
   margin-left: 3px;
 }
 
+.nav-links {
+  display: flex;
+  gap: 0.25rem;
+  margin-left: 1.5rem;
+  margin-right: auto;
+}
+
+.nav-link {
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+  user-select: none;
+}
+
+.nav-link:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.nav-link.active {
+  color: var(--text);
+  background: var(--surface);
+}
+
 main {
   max-width: 960px;
   margin: 0 auto;

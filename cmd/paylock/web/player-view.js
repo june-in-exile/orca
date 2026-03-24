@@ -64,7 +64,7 @@ async function deleteVideo(id) {
       alert(data.error || 'Failed to delete video.');
       return;
     }
-    navigate('videos');
+    navigate('my-videos');
   } catch (err) {
     alert('Failed to delete video: ' + err.message);
   }
@@ -322,7 +322,7 @@ export function PlayerView() {
 
   return html`
     <div class="view active">
-      <a class="back-link" onclick=${() => navigate('videos')}>\u2190 Back to videos</a>
+      <a class="back-link" onclick=${() => navigate('my-videos')}>\u2190 Back to videos</a>
       <div class="player-info">
         <div style="display:flex; flex-direction:column;">
           <span style="font-size:1.25rem; font-weight:600; margin-bottom:0.25rem;">${title}</span>
