@@ -97,7 +97,38 @@ module paylock::gating {
 
 ---
 
-## 快速開始
+## 快速整合（外部開發者）
+
+PayLock 是一套 **self-hosted backend service**，負責影片處理、Walrus 儲存、串流導向。你的前端只需呼叫 REST API + 少量鏈上交易即可完成整合。
+
+**Testnet 公開實例**：`https://paylock.up.railway.app`
+
+```js
+// 最小整合範例：上傳免費影片 → 等待就緒 → 播放
+const PAYLOCK = 'https://paylock.up.railway.app';
+
+// 1. 上傳
+const form = new FormData();
+form.append('video', file);
+const { id } = await fetch(`${PAYLOCK}/api/upload`, { method: 'POST', body: form }).then(r => r.json());
+
+// 2. 等待處理完成 (SSE)
+await new Promise((resolve) => {
+  const es = new EventSource(`${PAYLOCK}/api/status/${id}/events`);
+  es.onmessage = (e) => {
+    if (JSON.parse(e.data).status === 'ready') { es.close(); resolve(); }
+  };
+});
+
+// 3. 播放 — 瀏覽器自動跟隨 307 重導至 Walrus
+videoElement.src = `${PAYLOCK}/stream/${id}/preview`;
+```
+
+付費影片的完整整合流程請參閱 [API.md — 付費解鎖整合指南](./API.md#付費解鎖整合指南)。
+
+---
+
+## 自行部署
 
 ### 前置需求
 
