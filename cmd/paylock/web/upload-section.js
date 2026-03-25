@@ -186,7 +186,7 @@ async function confirmUpload(fileInput) {
   uploadState.value = { active: true, percent: 0, text: 'Uploading ' + file.name + '...', step: null, showSpinner: false, showSteps: false };
 
   const formData = new FormData();
-  formData.append('video', file);
+  formData.append(priceMist > 0 ? 'preview' : 'video', file);
   const title = document.getElementById('video-title').value;
   if (title) formData.append('title', title);
   if (priceMist > 0) formData.append('price', priceMist.toString());
