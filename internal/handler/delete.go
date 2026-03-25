@@ -5,14 +5,17 @@ import (
 	"net/http"
 
 	"github.com/anthropics/paylock/internal/model"
+	"github.com/anthropics/paylock/internal/suiauth"
 )
 
 type Delete struct {
-	videos *model.VideoStore
+	videos   *model.VideoStore
+	verifier SigVerifier
+	clock    suiauth.Clock
 }
 
-func NewDelete(videos *model.VideoStore) *Delete {
-	return &Delete{videos: videos}
+func NewDelete(videos *model.VideoStore, verifier SigVerifier, clock suiauth.Clock) *Delete {
+	return &Delete{videos: videos, verifier: verifier, clock: clock}
 }
 
 func (h *Delete) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -32,11 +35,18 @@ func (h *Delete) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !verifyCreator(video, r.Header.Get(creatorHeader)) {
-		writeJSON(w, http.StatusForbidden, map[string]string{
-			"error": "forbidden: X-Creator does not match video creator",
-		})
-		return
+	if video.Creator != "" {
+		auth := extractAndVerifyWalletAuth(r, h.verifier, h.clock, "delete", id)
+		if auth.err != "" {
+			writeJSON(w, auth.status, map[string]string{"error": auth.err})
+			return
+		}
+		if !verifyOwnership(video, auth.address) {
+			writeJSON(w, http.StatusForbidden, map[string]string{
+				"error": "forbidden: wallet address does not match video creator",
+			})
+			return
+		}
 	}
 
 	h.videos.Delete(id)

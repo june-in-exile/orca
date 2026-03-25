@@ -13,6 +13,7 @@ import (
 	"github.com/anthropics/paylock/internal/config"
 	"github.com/anthropics/paylock/internal/model"
 	"github.com/anthropics/paylock/internal/processor"
+	"github.com/anthropics/paylock/internal/suiauth"
 )
 
 // Storer abstracts Walrus blob storage for testability.
@@ -22,28 +23,34 @@ type Storer interface {
 }
 
 type Upload struct {
-	walrus Storer
-	videos *model.VideoStore
-	cfg    *config.Config
+	walrus   Storer
+	videos   *model.VideoStore
+	cfg      *config.Config
+	verifier SigVerifier
+	clock    suiauth.Clock
 }
 
-func NewUpload(w Storer, videos *model.VideoStore, cfg *config.Config) *Upload {
-	return &Upload{walrus: w, videos: videos, cfg: cfg}
+func NewUpload(w Storer, videos *model.VideoStore, cfg *config.Config, verifier SigVerifier, clock suiauth.Clock) *Upload {
+	return &Upload{walrus: w, videos: videos, cfg: cfg, verifier: verifier, clock: clock}
 }
 
 func (h *Upload) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, h.cfg.MaxFileSize)
 
-	data, title, price, creator, err := h.parseRequest(r)
+	data, title, price, err := h.parseRequest(r)
 	if err != nil {
 		writeJSON(w, err.status, map[string]string{"error": err.msg})
 		return
 	}
-	if price > 0 && creator == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "paid uploads require a creator address",
-		})
-		return
+
+	var creator string
+	if price > 0 {
+		auth := extractAndVerifyWalletAuth(r, h.verifier, h.clock, "upload", "")
+		if auth.err != "" {
+			writeJSON(w, auth.status, map[string]string{"error": auth.err})
+			return
+		}
+		creator = auth.address
 	}
 	if price > 0 && !h.cfg.FFmpegEnabled {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
@@ -72,38 +79,37 @@ type requestError struct {
 	msg    string
 }
 
-func (h *Upload) parseRequest(r *http.Request) ([]byte, string, uint64, string, *requestError) {
+func (h *Upload) parseRequest(r *http.Request) ([]byte, string, uint64, *requestError) {
 	file, header, err := r.FormFile("video")
 	if err != nil {
-		return nil, "", 0, "", &requestError{http.StatusBadRequest, "failed to read video file: " + err.Error()}
+		return nil, "", 0, &requestError{http.StatusBadRequest, "failed to read video file: " + err.Error()}
 	}
 	defer file.Close()
 
 	if err := processor.ValidateSize(header.Size, h.cfg.MaxFileSize); err != nil {
-		return nil, "", 0, "", &requestError{http.StatusRequestEntityTooLarge, err.Error()}
+		return nil, "", 0, &requestError{http.StatusRequestEntityTooLarge, err.Error()}
 	}
 
 	data, err := io.ReadAll(file)
 	if err != nil {
-		return nil, "", 0, "", &requestError{http.StatusBadRequest, "failed to read video file"}
+		return nil, "", 0, &requestError{http.StatusBadRequest, "failed to read video file"}
 	}
 
 	if err := processor.ValidateMagicBytes(bytes.NewReader(data)); err != nil {
-		return nil, "", 0, "", &requestError{http.StatusBadRequest, "invalid file format: supported formats are MP4, MOV, WebM, MKV, AVI"}
+		return nil, "", 0, &requestError{http.StatusBadRequest, "invalid file format: supported formats are MP4, MOV, WebM, MKV, AVI"}
 	}
 
 	title := r.FormValue("title")
-	creator := r.FormValue("creator")
 
 	var price uint64
 	if v := r.FormValue("price"); v != "" {
 		price, err = strconv.ParseUint(v, 10, 64)
 		if err != nil {
-			return nil, "", 0, "", &requestError{http.StatusBadRequest, "invalid price: must be a positive integer (MIST)"}
+			return nil, "", 0, &requestError{http.StatusBadRequest, "invalid price: must be a positive integer (MIST)"}
 		}
 	}
 
-	return data, title, price, creator, nil
+	return data, title, price, nil
 }
 
 func (h *Upload) processAndUpload(id string, data []byte) {

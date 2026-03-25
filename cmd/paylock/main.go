@@ -17,6 +17,7 @@ import (
 	"github.com/anthropics/paylock/internal/middleware"
 	"github.com/anthropics/paylock/internal/model"
 	"github.com/anthropics/paylock/internal/processor"
+	"github.com/anthropics/paylock/internal/suiauth"
 	"github.com/anthropics/paylock/internal/walrus"
 )
 
@@ -74,16 +75,19 @@ func main() {
 		slog.Info("startup reindex complete", "chain_total", len(chainVideos), "new_entries", created)
 	}()
 
+	sigVerifier := suiauth.New()
+	clock := suiauth.SystemClock()
+
 	mux := http.NewServeMux()
 
 	// API routes
-	mux.Handle("POST /api/upload", handler.NewUpload(wc, videos, cfg))
+	mux.Handle("POST /api/upload", handler.NewUpload(wc, videos, cfg, sigVerifier, clock))
 	mux.Handle("GET /api/status/{id}", handler.NewStatus(videos))
 	mux.Handle("GET /api/status/{id}/events", handler.NewStatusEvents(videos))
 	mux.Handle("GET /api/videos", handler.NewVideos(videos))
 	mux.Handle("GET /api/videos/by-object/{object_id}", handler.NewVideoByObject(videos))
-	mux.Handle("DELETE /api/videos/{id}", handler.NewDelete(videos))
-	mux.Handle("PUT /api/videos/{id}", handler.NewSetSuiObject(videos, wc))
+	mux.Handle("DELETE /api/videos/{id}", handler.NewDelete(videos, sigVerifier, clock))
+	mux.Handle("PUT /api/videos/{id}", handler.NewSetSuiObject(videos, wc, sigVerifier, clock))
 	mux.Handle("GET /api/config", handler.NewAppConfig(cfg))
 	mux.Handle("POST /api/reindex", handler.NewReindex(idx, videos, wc.BlobURL, cfg.AdminSecret))
 

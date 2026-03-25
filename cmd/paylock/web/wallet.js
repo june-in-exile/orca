@@ -315,7 +315,10 @@ export async function createVideoOnChain(videoId, price, previewBlobId, fullBlob
   const suiObjectId = created.objectId;
 
   const putHeaders = { 'Content-Type': 'application/json' };
-  if (connectedAccount) putHeaders['X-Creator'] = connectedAccount.address;
+  if (connectedAccount) {
+    const auth = await signForAuth('update', videoId);
+    setAuthHeaders(putHeaders, auth);
+  }
   const res = await fetch('/api/videos/' + encodeURIComponent(videoId), {
     method: 'PUT',
     headers: putHeaders,
@@ -578,7 +581,10 @@ export async function recoverFullBlobId(video) {
   const fullBlobId = fields.full_blob_id;
 
   const recoverHeaders = { 'Content-Type': 'application/json' };
-  if (connectedAccount) recoverHeaders['X-Creator'] = connectedAccount.address;
+  if (connectedAccount) {
+    const auth = await signForAuth('update', video.id);
+    setAuthHeaders(recoverHeaders, auth);
+  }
   const res = await fetch('/api/videos/' + encodeURIComponent(video.id), {
     method: 'PUT',
     headers: recoverHeaders,
@@ -590,6 +596,31 @@ export async function recoverFullBlobId(video) {
   }
 
   return fullBlobId;
+}
+
+export async function signForAuth(action, resourceID) {
+  if (!connectedWallet || !connectedAccount) throw new Error('Wallet not connected');
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const rid = resourceID || '';
+  const message = 'paylock:' + action + ':' + rid + ':' + timestamp;
+  const msgBytes = new TextEncoder().encode(message);
+  const signFeature = connectedWallet.features['sui:signPersonalMessage'];
+  if (!signFeature) throw new Error('Wallet does not support signPersonalMessage');
+  const result = await signFeature.signPersonalMessage({
+    message: msgBytes,
+    account: connectedAccount,
+  });
+  return {
+    address: connectedAccount.address,
+    signature: result.signature,
+    timestamp,
+  };
+}
+
+export function setAuthHeaders(headers, auth) {
+  headers['X-Wallet-Address'] = auth.address;
+  headers['X-Wallet-Sig'] = auth.signature;
+  headers['X-Wallet-Timestamp'] = auth.timestamp;
 }
 
 export function isWalletConnected() {

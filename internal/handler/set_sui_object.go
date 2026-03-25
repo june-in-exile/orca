@@ -5,15 +5,18 @@ import (
 	"net/http"
 
 	"github.com/anthropics/paylock/internal/model"
+	"github.com/anthropics/paylock/internal/suiauth"
 )
 
 type SetSuiObject struct {
-	videos *model.VideoStore
-	walrus Storer
+	videos   *model.VideoStore
+	walrus   Storer
+	verifier SigVerifier
+	clock    suiauth.Clock
 }
 
-func NewSetSuiObject(videos *model.VideoStore, walrus Storer) *SetSuiObject {
-	return &SetSuiObject{videos: videos, walrus: walrus}
+func NewSetSuiObject(videos *model.VideoStore, walrus Storer, verifier SigVerifier, clock suiauth.Clock) *SetSuiObject {
+	return &SetSuiObject{videos: videos, walrus: walrus, verifier: verifier, clock: clock}
 }
 
 func (h *SetSuiObject) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -51,11 +54,18 @@ func (h *SetSuiObject) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !verifyCreator(video, r.Header.Get(creatorHeader)) {
-		writeJSON(w, http.StatusForbidden, map[string]string{
-			"error": "forbidden: X-Creator does not match video creator",
-		})
-		return
+	if video.Creator != "" {
+		auth := extractAndVerifyWalletAuth(r, h.verifier, h.clock, "update", id)
+		if auth.err != "" {
+			writeJSON(w, auth.status, map[string]string{"error": auth.err})
+			return
+		}
+		if !verifyOwnership(video, auth.address) {
+			writeJSON(w, http.StatusForbidden, map[string]string{
+				"error": "forbidden: wallet address does not match video creator",
+			})
+			return
+		}
 	}
 
 	if video.SuiObjectID != "" && video.SuiObjectID != body.SuiObjectID {

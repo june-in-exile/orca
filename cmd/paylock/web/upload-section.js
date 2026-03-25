@@ -4,6 +4,7 @@ import {
   formatFileSize, stageNewFile, clearStagedFile,
   loadWallet, walletState,
 } from './state.js';
+import { signForAuth, setAuthHeaders, isWalletConnected } from './wallet.js';
 
 function stepCls(status) {
   return 'upload-step ' + (status || 'pending');
@@ -102,10 +103,16 @@ function StagedFilePreview({ inputRef }) {
   `;
 }
 
-function sendUpload(formData, fileName) {
+function sendUpload(formData, fileName, authHeaders) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/upload');
+
+    if (authHeaders) {
+      for (const [k, v] of Object.entries(authHeaders)) {
+        xhr.setRequestHeader(k, v);
+      }
+    }
 
     xhr.upload.addEventListener('progress', (e) => {
       if (e.lengthComputable) {
@@ -183,11 +190,16 @@ async function confirmUpload(fileInput) {
   const title = document.getElementById('video-title').value;
   if (title) formData.append('title', title);
   if (priceMist > 0) formData.append('price', priceMist.toString());
-  const walletAddr = walletState.value.address;
-  if (walletAddr) formData.append('creator', walletAddr);
+
+  let authHeaders = null;
+  if (priceMist > 0 && isWalletConnected()) {
+    const auth = await signForAuth('upload', '');
+    authHeaders = {};
+    setAuthHeaders(authHeaders, auth);
+  }
 
   try {
-    const data = await sendUpload(formData, file.name);
+    const data = await sendUpload(formData, file.name, authHeaders);
 
     let navigateId = data.id;
 

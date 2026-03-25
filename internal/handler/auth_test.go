@@ -2,21 +2,48 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/anthropics/paylock/internal/suiauth"
 )
+
+type mockVerifier struct {
+	address string
+	err     error
+}
+
+func (m *mockVerifier) Verify(_, _ string) (string, error) {
+	return m.address, m.err
+}
+
+func nowTS() string {
+	return strconv.FormatInt(time.Now().Unix(), 10)
+}
+
+func setAuthHeaders(req *http.Request, addr, sig, ts string) {
+	req.Header.Set("X-Wallet-Address", addr)
+	req.Header.Set("X-Wallet-Sig", sig)
+	req.Header.Set("X-Wallet-Timestamp", ts)
+}
+
+// --- Delete tests ---
 
 func TestDelete_RequiresCreatorAuth(t *testing.T) {
 	videos := mustNewVideoStore(t)
 	videos.Create("vid-001", "Test", 100, "0xAlice")
-	h := NewDelete(videos)
+	v := &mockVerifier{address: "0xBob", err: nil}
+	h := NewDelete(videos, v, suiauth.FixedClock(time.Now().Unix()))
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/videos/vid-001", nil)
 	req.SetPathValue("id", "vid-001")
-	req.Header.Set("X-Creator", "0xBob")
+	setAuthHeaders(req, "0xBob", "fakesig", nowTS())
 	rec := httptest.NewRecorder()
 
 	h.ServeHTTP(rec, req)
@@ -29,11 +56,12 @@ func TestDelete_RequiresCreatorAuth(t *testing.T) {
 func TestDelete_AllowsCorrectCreator(t *testing.T) {
 	videos := mustNewVideoStore(t)
 	videos.Create("vid-001", "Test", 100, "0xAlice")
-	h := NewDelete(videos)
+	v := &mockVerifier{address: "0xAlice", err: nil}
+	h := NewDelete(videos, v, suiauth.FixedClock(time.Now().Unix()))
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/videos/vid-001", nil)
 	req.SetPathValue("id", "vid-001")
-	req.Header.Set("X-Creator", "0xAlice")
+	setAuthHeaders(req, "0xAlice", "fakesig", nowTS())
 	rec := httptest.NewRecorder()
 
 	h.ServeHTTP(rec, req)
@@ -46,11 +74,12 @@ func TestDelete_AllowsCorrectCreator(t *testing.T) {
 func TestDelete_AllowsCaseInsensitiveCreator(t *testing.T) {
 	videos := mustNewVideoStore(t)
 	videos.Create("vid-001", "Test", 100, "0xAbCdEf")
-	h := NewDelete(videos)
+	v := &mockVerifier{address: "0xabcdef", err: nil}
+	h := NewDelete(videos, v, suiauth.FixedClock(time.Now().Unix()))
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/videos/vid-001", nil)
 	req.SetPathValue("id", "vid-001")
-	req.Header.Set("X-Creator", "0xabcdef")
+	setAuthHeaders(req, "0xabcdef", "fakesig", nowTS())
 	rec := httptest.NewRecorder()
 
 	h.ServeHTTP(rec, req)
@@ -63,7 +92,7 @@ func TestDelete_AllowsCaseInsensitiveCreator(t *testing.T) {
 func TestDelete_AllowsNoCreatorVideo(t *testing.T) {
 	videos := mustNewVideoStore(t)
 	videos.Create("vid-001", "Test", 0, "")
-	h := NewDelete(videos)
+	h := NewDelete(videos, nil, suiauth.FixedClock(time.Now().Unix()))
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/videos/vid-001", nil)
 	req.SetPathValue("id", "vid-001")
@@ -76,10 +105,10 @@ func TestDelete_AllowsNoCreatorVideo(t *testing.T) {
 	}
 }
 
-func TestDelete_MissingCreatorHeader(t *testing.T) {
+func TestDelete_MissingAuthHeaders(t *testing.T) {
 	videos := mustNewVideoStore(t)
 	videos.Create("vid-001", "Test", 100, "0xAlice")
-	h := NewDelete(videos)
+	h := NewDelete(videos, &mockVerifier{}, suiauth.FixedClock(time.Now().Unix()))
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/videos/vid-001", nil)
 	req.SetPathValue("id", "vid-001")
@@ -87,10 +116,49 @@ func TestDelete_MissingCreatorHeader(t *testing.T) {
 
 	h.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 without X-Creator header, got %d", rec.Code)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without auth headers, got %d", rec.Code)
 	}
 }
+
+func TestDelete_InvalidSignature(t *testing.T) {
+	videos := mustNewVideoStore(t)
+	videos.Create("vid-001", "Test", 100, "0xAlice")
+	v := &mockVerifier{address: "", err: errors.New("bad sig")}
+	h := NewDelete(videos, v, suiauth.FixedClock(time.Now().Unix()))
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/videos/vid-001", nil)
+	req.SetPathValue("id", "vid-001")
+	setAuthHeaders(req, "0xAlice", "badsig", nowTS())
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for invalid signature, got %d", rec.Code)
+	}
+}
+
+func TestDelete_ExpiredTimestamp(t *testing.T) {
+	videos := mustNewVideoStore(t)
+	videos.Create("vid-001", "Test", 100, "0xAlice")
+	v := &mockVerifier{address: "0xAlice", err: nil}
+	// Clock is at T=1000, but request timestamp will be T=100 (900s ago)
+	h := NewDelete(videos, v, suiauth.FixedClock(1000))
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/videos/vid-001", nil)
+	req.SetPathValue("id", "vid-001")
+	setAuthHeaders(req, "0xAlice", "fakesig", "100")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for expired timestamp, got %d", rec.Code)
+	}
+}
+
+// --- SetSuiObject tests ---
 
 func TestSetSuiObject_RequiresCreatorAuth(t *testing.T) {
 	videos := mustNewVideoStore(t)
@@ -100,12 +168,13 @@ func TestSetSuiObject_RequiresCreatorAuth(t *testing.T) {
 	store := &mockStorer{storeFunc: func(data []byte, epochs int) (string, error) {
 		return "blob1", nil
 	}}
-	h := NewSetSuiObject(videos, store)
+	v := &mockVerifier{address: "0xBob", err: nil}
+	h := NewSetSuiObject(videos, store, v, suiauth.FixedClock(time.Now().Unix()))
 
 	body := `{"sui_object_id":"0xOBJ1","full_blob_id":"blob99"}`
 	req := httptest.NewRequest(http.MethodPut, "/api/videos/vid-001", strings.NewReader(body))
 	req.SetPathValue("id", "vid-001")
-	req.Header.Set("X-Creator", "0xBob")
+	setAuthHeaders(req, "0xBob", "fakesig", nowTS())
 	rec := httptest.NewRecorder()
 
 	h.ServeHTTP(rec, req)
@@ -123,12 +192,13 @@ func TestSetSuiObject_AllowsCorrectCreator(t *testing.T) {
 	store := &mockStorer{storeFunc: func(data []byte, epochs int) (string, error) {
 		return "blob1", nil
 	}}
-	h := NewSetSuiObject(videos, store)
+	v := &mockVerifier{address: "0xAlice", err: nil}
+	h := NewSetSuiObject(videos, store, v, suiauth.FixedClock(time.Now().Unix()))
 
 	body := `{"sui_object_id":"0xOBJ1","full_blob_id":"blob99"}`
 	req := httptest.NewRequest(http.MethodPut, "/api/videos/vid-001", strings.NewReader(body))
 	req.SetPathValue("id", "vid-001")
-	req.Header.Set("X-Creator", "0xAlice")
+	setAuthHeaders(req, "0xAlice", "fakesig", nowTS())
 	rec := httptest.NewRecorder()
 
 	h.ServeHTTP(rec, req)
@@ -137,6 +207,8 @@ func TestSetSuiObject_AllowsCorrectCreator(t *testing.T) {
 		t.Fatalf("expected 200 for correct creator, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+// --- Pagination tests (unchanged) ---
 
 func TestVideos_Pagination_DefaultValues(t *testing.T) {
 	videos := mustNewVideoStore(t)

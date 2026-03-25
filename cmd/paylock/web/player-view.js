@@ -3,6 +3,7 @@ import {
   viewParams, navGeneration, currentVideo, walletState,
   navigate, formatSui, loadWallet, setPollCleanup,
 } from './state.js';
+import { signForAuth, setAuthHeaders, isWalletConnected } from './wallet.js';
 
 function ChainStatus({ video }) {
   if (!video) return null;
@@ -59,8 +60,10 @@ async function deleteVideo(id) {
   if (!confirm('Are you sure you want to delete this video? This action cannot be undone.')) return;
   try {
     const headers = {};
-    const addr = walletState.value.address;
-    if (addr) headers['X-Creator'] = addr;
+    if (isWalletConnected()) {
+      const auth = await signForAuth('delete', id);
+      setAuthHeaders(headers, auth);
+    }
     const res = await fetch('/api/videos/' + encodeURIComponent(id), { method: 'DELETE', headers });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));

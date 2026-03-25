@@ -1,12 +1,15 @@
 import { html } from './lib.js';
-import { navigate, formatDate, formatSui, walletState } from './state.js';
+import { navigate, formatDate, formatSui } from './state.js';
+import { signForAuth, setAuthHeaders, isWalletConnected } from './wallet.js';
 
 export async function deleteVideo(id, onDeleted) {
   if (!confirm('Are you sure you want to delete this video? This action cannot be undone.')) return;
   try {
     const headers = {};
-    const addr = walletState.value.address;
-    if (addr) headers['X-Creator'] = addr;
+    if (isWalletConnected()) {
+      const auth = await signForAuth('delete', id);
+      setAuthHeaders(headers, auth);
+    }
     const res = await fetch('/api/videos/' + encodeURIComponent(id), { method: 'DELETE', headers });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));

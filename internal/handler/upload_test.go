@@ -63,7 +63,7 @@ func TestUpload_InvalidFormat(t *testing.T) {
 		return "blob1", nil
 	}}
 	videos := mustNewVideoStore(t)
-	h := NewUpload(store, videos, newTestConfig())
+	h := NewUpload(store, videos, newTestConfig(), nil, nil)
 
 	req := createMultipartRequest(t, "video", "test.txt", []byte("not an mp4 file content here!!"), nil)
 	rec := httptest.NewRecorder()
@@ -84,7 +84,7 @@ func TestUpload_ValidMP4_Accepted(t *testing.T) {
 		return fmt.Sprintf("blob%d", n), nil
 	}}
 	videos := mustNewVideoStore(t)
-	h := NewUpload(store, videos, newTestConfig())
+	h := NewUpload(store, videos, newTestConfig(), nil, nil)
 
 	req := createMultipartRequest(t, "video", "test.mp4", mp4Data, map[string]string{
 		"title": "Test Video",
@@ -115,7 +115,7 @@ func TestUpload_InvalidPrice(t *testing.T) {
 		return "blob1", nil
 	}}
 	videos := mustNewVideoStore(t)
-	h := NewUpload(store, videos, newTestConfig())
+	h := NewUpload(store, videos, newTestConfig(), nil, nil)
 
 	req := createMultipartRequest(t, "video", "test.mp4", mp4Data, map[string]string{
 		"price": "not-a-number",
@@ -138,7 +138,7 @@ func TestUpload_PaidWithoutCreator(t *testing.T) {
 	videos := mustNewVideoStore(t)
 	cfg := newTestConfig()
 	cfg.FFmpegEnabled = true
-	h := NewUpload(store, videos, cfg)
+	h := NewUpload(store, videos, cfg, nil, nil)
 
 	req := createMultipartRequest(t, "video", "test.mp4", mp4Data, map[string]string{
 		"price": "100000000",
@@ -147,14 +147,9 @@ func TestUpload_PaidWithoutCreator(t *testing.T) {
 
 	h.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for paid upload without creator, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	var resp map[string]string
-	json.NewDecoder(rec.Body).Decode(&resp)
-	if resp["error"] == "" {
-		t.Error("expected error message in response")
+	// Paid upload without wallet auth headers should get 401
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for paid upload without auth, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -163,7 +158,7 @@ func TestUpload_MissingFile(t *testing.T) {
 		return "blob1", nil
 	}}
 	videos := mustNewVideoStore(t)
-	h := NewUpload(store, videos, newTestConfig())
+	h := NewUpload(store, videos, newTestConfig(), nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/upload", nil)
 	rec := httptest.NewRecorder()
