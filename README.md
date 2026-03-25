@@ -1,84 +1,84 @@
 # PayLock — Decentralized Video Paywall SDK for Sui
 
-## 簡介
+## Introduction
 
-PayLock 是建立在 Walrus + Seal 之上的影片付費解鎖 SDK。影片上傳時自動拆為預覽片段與完整版，預覽公開播放，完整版透過 Seal 加密存儲於 Walrus。觀眾付費後取得鏈上存取憑證，解密後即可觀看完整內容。開發者只需幾行程式碼即可為任何 dApp 加入影片付費牆功能。
+PayLock is a video paywall SDK built on Walrus + Seal. When a video is uploaded, it is automatically split into a preview clip and a full version. The preview is publicly playable, while the full version is encrypted with Seal and stored on Walrus. After payment, viewers receive an on-chain access credential to decrypt and watch the full content. Developers can add video paywall functionality to any dApp with just a few lines of code.
 
-## 現有功能
+## Features
 
-- **自動縮圖與預覽**：上傳 MP4 後，後端自動擷取縮圖 (Thumbnail) 與前 N 秒預覽 (Preview)，並行上傳至 Walrus。
-- **Faststart 優化**：免費影片自動進行 `faststart` 處理，優化 Walrus 上的串流播放速度。
-- **Seal 加密 (Paid Videos)**：付費影片在瀏覽器端使用 Seal SDK 加密，確保只有持有 AccessPass 的用戶可解密播放。
-- **單筆交易流程**：優化後的鏈上發布流程，僅需一筆交易即可建立 Video 物件並設定加密命名空間 (Seal Namespace)。
-- **即時狀態追蹤 (SSE)**：透過 Server-Sent Events 即時回傳處理進度，從上傳、擷取到 Walrus 儲存狀態一目了然。
-- **前端 SPA**：整合 Slush Wallet，支援價格設定、影片列表、播放器（預覽 → 付費牆 → 解密播放）。
+- **Auto Thumbnail & Preview**: After uploading an MP4, the backend automatically extracts a thumbnail and an N-second preview, uploading both to Walrus in parallel.
+- **Faststart Optimization**: Free videos are automatically processed with `faststart` to optimize streaming playback speed on Walrus.
+- **Seal Encryption (Paid Videos)**: Paid videos are encrypted client-side using the Seal SDK, ensuring only AccessPass holders can decrypt and play them.
+- **Single-Transaction Flow**: Optimized on-chain publishing — only one transaction is needed to create a Video object and set the encryption namespace (Seal Namespace).
+- **Real-Time Status Tracking (SSE)**: Server-Sent Events provide real-time progress updates, from upload to extraction to Walrus storage status.
+- **Frontend SPA**: Integrated with Slush Wallet, supporting price configuration, video listing, and player (preview → paywall → decrypted playback).
 
 ---
 
-## 核心架構
+## Architecture
 
-### 影片發布流程（付費影片）
+### Video Publishing Flow (Paid Videos)
 
-為了兼顧安全性與效能，PayLock 採用「後端預處理 + 前端加密」的混合流程：
+To balance security and performance, PayLock uses a hybrid flow of "backend preprocessing + frontend encryption":
 
-1. **後端預處理**：
-   - 用戶上傳影片至 `POST /api/upload`。
-   - 後端產生縮圖與預覽版 MP4，並上傳至 Walrus。
-   - 透過 `GET /api/status/{id}/events` (SSE) 通知前端預覽版已準備就緒。
+1. **Backend Preprocessing**:
+   - User uploads video to `POST /api/upload`.
+   - Backend generates thumbnail and preview MP4, then uploads them to Walrus.
+   - Notifies the frontend via `GET /api/status/{id}/events` (SSE) when the preview is ready.
 
-2. **前端加密與上傳**：
-   - 前端隨機產生 `seal_namespace`。
-   - 使用 Seal SDK 加密原始影片，並上傳加密後的 Blob 至 Walrus。
+2. **Frontend Encryption & Upload**:
+   - Frontend generates a random `seal_namespace`.
+   - Encrypts the original video using the Seal SDK, then uploads the encrypted blob to Walrus.
 
-3. **鏈上發布 (TX)**：
-   - 前端發起一筆交易呼叫 `create_video`。
-   - 傳入 `price`、`preview_blob_id`、`full_blob_id` (加密後) 與 `seal_namespace`。
-   - 交易成功後，呼叫 `PUT /api/videos/{id}` 將鏈上 ID 與後端記錄關聯。
+3. **On-Chain Publishing (TX)**:
+   - Frontend initiates a transaction calling `create_video`.
+   - Passes `price`, `preview_blob_id`, `full_blob_id` (encrypted), and `seal_namespace`.
+   - After the transaction succeeds, calls `PUT /api/videos/{id}` to link the on-chain ID with the backend record.
 
-### 系統組件
+### System Components
 
-```
-[ 用戶端 / 前端 SPA ]
+```text
+[ Client / Frontend SPA ]
     │
     ▼
 [ PayLock Backend (Go) ]
-    ├── POST /api/upload           驗證 MP4 → 擷取縮圖/預覽 → 並行上傳 Walrus
-    ├── GET /api/status/{id}/events SSE 即時追蹤處理進度
-    ├── GET /api/videos            列出影片（含縮圖與價格資訊）
-    └── PUT /api/videos/{id}       關聯鏈上物件 ID
+    ├── POST /api/upload           Validate MP4 → extract thumbnail/preview → upload to Walrus
+    ├── GET /api/status/{id}/events SSE real-time progress tracking
+    ├── GET /api/videos            List videos (with thumbnails and pricing)
+    └── PUT /api/videos/{id}       Link on-chain object ID
     │
-    ├──── 寫入 ────▶ [ Walrus Publisher ] → [ Walrus Storage ]
-    └──── 讀取 ────▶ [ Walrus Aggregator ] ← (串流播放)
+    ├──── Write ────▶ [ Walrus Publisher ] → [ Walrus Storage ]
+    └──── Read  ────▶ [ Walrus Aggregator ] ← (streaming playback)
 
-[ Sui 區塊鏈 ]  ← contracts/sources/gating.move
+[ Sui Blockchain ]  ← contracts/sources/gating.move
     Video (Shared Object) / AccessPass (Owned Object) / Seal Policy
 ```
 
 ---
 
-## 鏈上合約設計
+## On-Chain Contract Design
 
-合約位於 `contracts/sources/gating.move`：
+Contract located at `contracts/sources/gating.move`:
 
 ```move
 module paylock::gating {
-    /// 影片資訊，由創作者建立（shared object）
+    /// Video info, created by the creator (shared object)
     public struct Video has key {
         id: UID,
-        price: u64,                // 解鎖價格（MIST）
-        creator: address,          // 收款地址
-        preview_blob_id: String,   // 預覽版 Walrus Blob ID
-        full_blob_id: String,      // 完整版 Walrus Blob ID (付費影片為加密後)
-        seal_namespace: vector<u8>,// Seal 加密命名空間
+        price: u64,                // Unlock price (MIST)
+        creator: address,          // Payment recipient address
+        preview_blob_id: String,   // Preview Walrus Blob ID
+        full_blob_id: String,      // Full Walrus Blob ID (encrypted for paid videos)
+        seal_namespace: vector<u8>,// Seal encryption namespace
     }
 
-    /// 購買憑證，付費後 mint，永久有效（owned by buyer）
+    /// Purchase credential, minted after payment, permanently valid (owned by buyer)
     public struct AccessPass has key, store {
         id: UID,
         video_id: ID,
     }
 
-    /// 創作者發布影片（僅需一筆交易）
+    /// Creator publishes video (single transaction)
     public fun create_video(
         price: u64,
         preview_blob_id: String,
@@ -87,32 +87,32 @@ module paylock::gating {
         ctx: &mut TxContext
     );
 
-    /// 用戶付費 → mint AccessPass 並轉帳給創作者
+    /// User pays → mint AccessPass and transfer payment to creator
     entry fun purchase_and_transfer(video: &Video, payment: Coin<SUI>, ctx: &mut TxContext);
 
-    /// Seal key server 驗證解密權限
+    /// Seal key server verifies decryption permission
     entry fun seal_approve(id: vector<u8>, pass: &AccessPass, video: &Video);
 }
 ```
 
 ---
 
-## 快速整合（外部開發者）
+## Quick Integration (External Developers)
 
-PayLock 是一套 **self-hosted backend service**，負責影片處理、Walrus 儲存、串流導向。你的前端只需呼叫 REST API + 少量鏈上交易即可完成整合。
+PayLock is a **self-hosted backend service** that handles video processing, Walrus storage, and stream routing. Your frontend only needs to call the REST API + a few on-chain transactions to integrate.
 
-**Testnet 公開實例**：`https://paylock.up.railway.app`
+**Public Testnet Instance**: `https://paylock.up.railway.app`
 
 ```js
-// 最小整合範例：上傳免費影片 → 等待就緒 → 播放
+// Minimal integration example: upload free video → wait for ready → play
 const PAYLOCK = 'https://paylock.up.railway.app';
 
-// 1. 上傳
+// 1. Upload
 const form = new FormData();
 form.append('video', file);
 const { id } = await fetch(`${PAYLOCK}/api/upload`, { method: 'POST', body: form }).then(r => r.json());
 
-// 2. 等待處理完成 (SSE)
+// 2. Wait for processing (SSE)
 await new Promise((resolve) => {
   const es = new EventSource(`${PAYLOCK}/api/status/${id}/events`);
   es.onmessage = (e) => {
@@ -120,59 +120,59 @@ await new Promise((resolve) => {
   };
 });
 
-// 3. 播放 — 瀏覽器自動跟隨 307 重導至 Walrus
+// 3. Play — browser auto-follows 307 redirect to Walrus
 videoElement.src = `${PAYLOCK}/stream/${id}/preview`;
 ```
 
-付費影片的完整整合流程請參閱 [API.md — 付費解鎖整合指南](./API.md#付費解鎖整合指南)。
+For the full paid video integration flow, see [API.md — Paid Video Integration Guide](./API.md#paid-video-integration-guide).
 
 ---
 
-## 自行部署
+## Self-Hosting
 
-### 前置需求
+### Prerequisites
 
 - Go 1.25+
-- **FFmpeg**（必要，啟動時檢查）
+- **FFmpeg** (required, checked at startup)
 
-### 環境變數
+### Environment Variables
 
-| 變數 | 預設值 | 說明 |
-|------|--------|------|
-| `PAYLOCK_PORT` | `8080` | HTTP 監聽埠 |
-| `PAYLOCK_DATA_DIR` | `data` | Metadata 與本機快取儲存路徑 |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PAYLOCK_PORT` | `8080` | HTTP listen port |
+| `PAYLOCK_DATA_DIR` | `data` | Metadata and local cache storage path |
 | `PAYLOCK_WALRUS_PUBLISHER_URL` | `...` | Walrus Publisher |
 | `PAYLOCK_WALRUS_AGGREGATOR_URL` | `...` | Walrus Aggregator |
-| `PAYLOCK_WALRUS_EPOCHS` | `5` | Walrus 儲存期數 |
-| `PAYLOCK_PREVIEW_DURATION` | `10` | 預覽片段秒數 |
+| `PAYLOCK_WALRUS_EPOCHS` | `5` | Walrus storage epochs |
+| `PAYLOCK_PREVIEW_DURATION` | `10` | Preview clip duration in seconds |
 | `PAYLOCK_SUI_RPC_URL` | `...` | Sui RPC (Testnet) |
-| `PAYLOCK_GATING_PACKAGE_ID` | _(必填)_ | 部署後的合約 Package ID |
+| `PAYLOCK_GATING_PACKAGE_ID` | _(required)_ | Deployed contract Package ID |
 
-### 啟動服務
+### Start the Server
 
 ```bash
-# 1. 複製環境變數範例並修改
+# 1. Copy and edit the environment variables
 cp .env.example .env
 
-# 2. 啟動服務
+# 2. Start the server
 make run
 ```
 
 ---
 
-## API 參考
+## API Reference
 
-PayLock 提供完整的 RESTful API 與 SSE 事件流，方便開發者將付費解鎖功能整合至任何影片應用中。
+PayLock provides a complete RESTful API with SSE event streams, enabling developers to integrate video paywall functionality into any video application.
 
-詳細 API 規格與整合建議請參閱：[**API.md — PayLock 基礎設施規格書**](./API.md)
+For detailed API specs and integration guide, see: [**API.md — PayLock Infrastructure Specification**](./API.md)
 
-### 核心接口摘要
+### Core Endpoints Summary
 
-1. **上傳影片**：`POST /api/upload` — 發起非同步處理任務。
-2. **即時追蹤**：`GET /api/status/{id}/events` — 透過 SSE 獲取處理進度。
-3. **建立關聯**：`PUT /api/videos/{id}` — 同步鏈上物件 ID 至後端。
-4. **預覽播放**：`GET /stream/{id}` — 307 重導向至預覽版。
-5. **系統配置**：`GET /api/config` — 獲取合約與 Walrus 端點資訊。
+1. **Upload Video**: `POST /api/upload` — Initiate async processing.
+2. **Real-Time Tracking**: `GET /api/status/{id}/events` — Get processing progress via SSE.
+3. **Link On-Chain Object**: `PUT /api/videos/{id}` — Sync on-chain object ID to backend.
+4. **Preview Playback**: `GET /stream/{id}/preview` — 307 redirect to preview.
+5. **System Config**: `GET /api/config` — Get contract and Walrus endpoint info.
 
 ---
 

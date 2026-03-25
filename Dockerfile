@@ -1,22 +1,22 @@
-# 第一階段：編譯
+# Stage 1: Build
 FROM golang:1.25-bookworm AS builder
 
 WORKDIR /app
 
-# 複製依賴檔案
+# Copy dependency files
 COPY go.mod go.sum ./
 RUN go mod download
 
-# 複製原始碼
+# Copy source code
 COPY . .
 
-# 編譯執行檔
+# Compile binary
 RUN go build -o paylock ./cmd/paylock
 
-# 第二階段：執行環境
+# Stage 2: Runtime
 FROM debian:bookworm-slim
 
-# 安裝 ffmpeg 與必要套件
+# Install ffmpeg and required packages
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     ca-certificates \
@@ -24,18 +24,18 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# 從編譯階段複製執行檔
+# Copy binary from build stage
 COPY --from=builder /app/paylock .
 
-# 設定環境變數預設值
+# Set default environment variables
 ENV PAYLOCK_PORT=8080
 ENV PAYLOCK_DATA_DIR=/data
 
-# 建立資料夾
+# Create data directory
 RUN mkdir -p /data
 
-# 暴露埠號
+# Expose port
 EXPOSE 8080
 
-# 啟動指令
+# Start command
 CMD ["./paylock"]
