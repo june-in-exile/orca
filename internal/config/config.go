@@ -9,42 +9,44 @@ import (
 )
 
 type Config struct {
-	Port               string
-	MaxFileSize        int64
-	MaxPreviewSize     int64
-	MaxPreviewDuration int
-	WalrusPublisher    string
-	WalrusAggregator   string
-	WalrusEpochs       int
-	FFmpegEnabled      bool
-	FFmpegPath         string
-	FFprobePath        string
-	PreviewDuration    int
-	SuiRPCURL          string
-	GatingPackageID    string
-	DataDir            string
-	AdminSecret        string
+	Port                   string
+	MaxFileSize            int64
+	MaxPreviewSize         int64
+	MaxPreviewDuration     int
+	MinPreviewDuration     int
+	WalrusPublisher        string
+	WalrusAggregator       string
+	WalrusEpochs           int
+	FFmpegEnabled          bool
+	FFmpegPath             string
+	FFprobePath            string
+	PreviewDurationDefault int
+	SuiRPCURL              string
+	GatingPackageID        string
+	DataDir                string
+	AdminSecret            string
 }
 
 func Load() (*Config, error) {
 	_ = godotenv.Load()
 
 	cfg := &Config{
-		Port:               envOrDefault("PAYLOCK_PORT", "8080"),
-		MaxFileSize:        500 * 1024 * 1024,
-		MaxPreviewSize:     50 * 1024 * 1024,
-		MaxPreviewDuration: 30,
-		WalrusPublisher:  envOrDefault("PAYLOCK_WALRUS_PUBLISHER_URL", "https://publisher.walrus-testnet.walrus.space"),
-		WalrusAggregator: envOrDefault("PAYLOCK_WALRUS_AGGREGATOR_URL", "https://aggregator.walrus-testnet.walrus.space"),
-		WalrusEpochs:     5,
-		DataDir:          envOrDefault("PAYLOCK_DATA_DIR", "data"),
-		FFmpegEnabled:    envBoolOrDefault("PAYLOCK_ENABLE_FFMPEG", true),
-		FFmpegPath:       envOrDefault("PAYLOCK_FFMPEG_PATH", "ffmpeg"),
-		FFprobePath:      envOrDefault("PAYLOCK_FFPROBE_PATH", "ffprobe"),
-		PreviewDuration:  10,
-		SuiRPCURL:        envOrDefault("PAYLOCK_SUI_RPC_URL", "https://fullnode.testnet.sui.io:443"),
-		GatingPackageID:  envOrDefault("PAYLOCK_GATING_PACKAGE_ID", "0xec50faf6c1bb5720d7744476282a7b22600254de3ed849808ff9aacef8ba161a"),
-		AdminSecret:      os.Getenv("PAYLOCK_ADMIN_SECRET"),
+		Port:                   envOrDefault("PAYLOCK_PORT", "8080"),
+		MaxFileSize:            500 * 1024 * 1024,
+		MaxPreviewSize:         50 * 1024 * 1024,
+		MaxPreviewDuration:     300,
+		MinPreviewDuration:     10,
+		WalrusPublisher:        envOrDefault("PAYLOCK_WALRUS_PUBLISHER_URL", "https://publisher.walrus-testnet.walrus.space"),
+		WalrusAggregator:       envOrDefault("PAYLOCK_WALRUS_AGGREGATOR_URL", "https://aggregator.walrus-testnet.walrus.space"),
+		WalrusEpochs:           5,
+		DataDir:                envOrDefault("PAYLOCK_DATA_DIR", "data"),
+		FFmpegEnabled:          envBoolOrDefault("PAYLOCK_ENABLE_FFMPEG", true),
+		FFmpegPath:             envOrDefault("PAYLOCK_FFMPEG_PATH", "ffmpeg"),
+		FFprobePath:            envOrDefault("PAYLOCK_FFPROBE_PATH", "ffprobe"),
+		PreviewDurationDefault: 10,
+		SuiRPCURL:              envOrDefault("PAYLOCK_SUI_RPC_URL", "https://fullnode.testnet.sui.io:443"),
+		GatingPackageID:        envOrDefault("PAYLOCK_GATING_PACKAGE_ID", "0xec50faf6c1bb5720d7744476282a7b22600254de3ed849808ff9aacef8ba161a"),
+		AdminSecret:            os.Getenv("PAYLOCK_ADMIN_SECRET"),
 	}
 
 	if v := os.Getenv("PAYLOCK_MAX_FILE_SIZE_MB"); v != "" {

@@ -96,7 +96,7 @@ function StagedFilePreview({ inputRef }) {
           <button class="btn btn-outline" onclick=${() => inputRef.current && inputRef.current.click()}>
             Change File
           </button>
-          <button class="btn btn-outline" onclick=${clearStagedFile}>Remove</button>
+          <button class="btn btn-outline" onclick=${() => { clearStagedFile(); videoDuration = null; updatePreviewControls(); }}>Remove</button>
         </div>
       </div>
     </div>
@@ -152,21 +152,102 @@ function pollUntilReady(id) {
   });
 }
 
-let previewDurationSec = 10;
+let previewDurationDefault = 10;
+let previewDurationMin = 10;
+let previewDurationMax = 30;
+let serverMaxPreviewDuration = 300;
+let videoDuration = null;
+let previewDurationSec = previewDurationDefault;
+let previewControlsScheduled = false;
 
-async function fetchPreviewDuration() {
+function effectiveMax() {
+  if (videoDuration !== null) {
+    const floored = Math.floor(videoDuration);
+    return Math.min(serverMaxPreviewDuration, floored);
+  }
+  return serverMaxPreviewDuration;
+}
+
+function updatePreviewControls() {
+  const range = document.getElementById('preview-duration-range');
+  const number = document.getElementById('preview-duration');
+  const hint = document.getElementById('preview-duration-hint');
+
+  previewDurationMax = effectiveMax();
+  if (previewDurationSec > previewDurationMax) previewDurationSec = previewDurationMax;
+  if (previewDurationSec < previewDurationMin) previewDurationSec = previewDurationMin;
+
+  if (range) {
+    range.min = previewDurationMin;
+    range.max = previewDurationMax;
+    range.value = previewDurationSec;
+  }
+  if (number) {
+    number.min = previewDurationMin;
+    number.max = previewDurationMax;
+    number.value = previewDurationSec;
+  }
+  if (hint) {
+    const parts = [`Default ${previewDurationDefault}s`, `Min ${previewDurationMin}s`, `Max ${previewDurationMax}s`];
+    if (videoDuration !== null) {
+      parts.push(`Video ${Math.floor(videoDuration)}s`);
+    }
+    hint.textContent = parts.join(' • ');
+  }
+}
+
+async function fetchPreviewConfig() {
   try {
     const res = await fetch('/api/config');
     if (res.ok) {
       const cfg = await res.json();
-      if (cfg.preview_duration > 0) previewDurationSec = cfg.preview_duration;
+      if (cfg.preview_duration_default > 0) previewDurationDefault = cfg.preview_duration_default;
+      if (cfg.preview_duration_min > 0) previewDurationMin = cfg.preview_duration_min;
+      if (cfg.preview_duration_max > 0) {
+        serverMaxPreviewDuration = cfg.preview_duration_max;
+        previewDurationMax = cfg.preview_duration_max;
+      }
+      if (!cfg.preview_duration_default && cfg.preview_duration > 0) {
+        previewDurationDefault = cfg.preview_duration;
+      }
+      previewDurationSec = previewDurationDefault;
+      updatePreviewControls();
     }
   } catch (_) {
     // fallback to default
   }
 }
 
-fetchPreviewDuration();
+fetchPreviewConfig();
+
+function detectVideoDuration(file) {
+  const video = document.createElement('video');
+  video.preload = 'metadata';
+  const url = URL.createObjectURL(file);
+  video.src = url;
+  video.addEventListener('loadedmetadata', () => {
+    URL.revokeObjectURL(url);
+    if (Number.isFinite(video.duration) && video.duration > 0) {
+      videoDuration = video.duration;
+    } else {
+      videoDuration = null;
+    }
+    updatePreviewControls();
+  });
+  video.addEventListener('error', () => {
+    URL.revokeObjectURL(url);
+    videoDuration = null;
+    updatePreviewControls();
+  });
+}
+
+function readPreviewDuration() {
+  const input = document.getElementById('preview-duration');
+  if (!input) return previewDurationDefault;
+  const sec = parseInt(input.value, 10);
+  if (Number.isNaN(sec)) return null;
+  return sec;
+}
 
 function generatePreview(file) {
   return new Promise((resolve, reject) => {
@@ -256,6 +337,13 @@ async function confirmUpload(fileInput) {
   const staged = stagedFile.value;
   if (!staged) return;
 
+  const previewDuration = readPreviewDuration();
+  if (previewDuration === null || previewDuration < previewDurationMin || previewDuration > previewDurationMax) {
+    showToast('error', `Preview length must be between ${previewDurationMin}s and ${previewDurationMax}s.`, 5000);
+    return;
+  }
+  previewDurationSec = previewDuration;
+
   const priceInput = document.getElementById('video-price').value;
   let priceMist = 0;
   if (priceInput && parseFloat(priceInput) > 0) {
@@ -285,6 +373,7 @@ async function confirmUpload(fileInput) {
 
   const formData = new FormData();
   formData.append(priceMist > 0 ? 'preview' : 'video', previewFile || file);
+  formData.append('preview_duration', previewDurationSec.toString());
   const title = document.getElementById('video-title').value;
   if (title) formData.append('title', title);
   if (priceMist > 0) formData.append('price', priceMist.toString());
@@ -327,6 +416,8 @@ async function confirmUpload(fileInput) {
     }
 
     clearStagedFile();
+    videoDuration = null;
+    updatePreviewControls();
     if (fileInput) fileInput.value = '';
     document.getElementById('video-title').value = '';
     document.getElementById('video-price').value = '';
@@ -343,6 +434,13 @@ export function UploadSection() {
   const inputRef = useRef(null);
   const staged = stagedFile.value;
 
+  if (!previewControlsScheduled) {
+    previewControlsScheduled = true;
+    setTimeout(updatePreviewControls, 0);
+  }
+
+  setTimeout(updatePreviewControls, 0);
+
   const handleUploadAction = useCallback(() => {
     if (staged) {
       confirmUpload(inputRef.current);
@@ -352,7 +450,26 @@ export function UploadSection() {
   }, [staged]);
 
   const onFileChange = useCallback((e) => {
-    if (e.target.files.length > 0) stageNewFile(e.target.files[0]);
+    if (e.target.files.length > 0) {
+      stageNewFile(e.target.files[0]);
+      detectVideoDuration(e.target.files[0]);
+    }
+  }, []);
+
+  const onPreviewRangeInput = useCallback((e) => {
+    const val = parseInt(e.target.value, 10);
+    if (Number.isNaN(val)) return;
+    previewDurationSec = val;
+    const number = document.getElementById('preview-duration');
+    if (number) number.value = val;
+  }, []);
+
+  const onPreviewNumberInput = useCallback((e) => {
+    const val = parseInt(e.target.value, 10);
+    if (Number.isNaN(val)) return;
+    previewDurationSec = val;
+    const range = document.getElementById('preview-duration-range');
+    if (range) range.value = val;
   }, []);
 
   return html`
@@ -371,6 +488,34 @@ export function UploadSection() {
         </label>
         <input type="number" id="video-price" placeholder="0" min="0" step="0.01"
           class="form-input" style="margin-bottom: 1rem;" />
+
+        <label for="preview-duration" style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+          Preview length (seconds)
+        </label>
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.35rem;">
+          <input
+            type="range"
+            id="preview-duration-range"
+            min=${previewDurationMin}
+            max=${previewDurationMax}
+            value=${previewDurationDefault}
+            oninput=${onPreviewRangeInput}
+            style="flex: 1;"
+          />
+          <input
+            type="number"
+            id="preview-duration"
+            min=${previewDurationMin}
+            max=${previewDurationMax}
+            value=${previewDurationDefault}
+            class="form-input"
+            oninput=${onPreviewNumberInput}
+            style="width: 6rem;"
+          />
+        </div>
+        <div id="preview-duration-hint" style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 1rem;">
+          Default ${previewDurationDefault}s • Min ${previewDurationMin}s • Max ${previewDurationMax}s
+        </div>
 
         <${StagedFilePreview} inputRef=${inputRef} />
 

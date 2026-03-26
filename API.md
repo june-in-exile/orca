@@ -241,6 +241,7 @@ Initiate an async upload. The server validates the file and starts background pr
 |-----------|----------|-------------|
 | `video` | Yes | Video file (max `PAYLOCK_MAX_FILE_SIZE_MB`, default 500 MB) |
 | `title` | No | Video title, auto-generated if not provided |
+| `preview_duration` | No | Preview length in seconds. Defaults to `preview_duration_default` from `GET /api/config`. Must be between `preview_duration_min` and `preview_duration_max` (default max 300s). |
 | `price` | No | `0` or omitted = free video |
 
 **Paid uploads** (`price > 0`):
@@ -250,11 +251,12 @@ Initiate an async upload. The server validates the file and starts background pr
 | `preview` | Yes | Short preview video clip generated client-side (max `PAYLOCK_MAX_PREVIEW_SIZE_MB`, default 50 MB) |
 | `thumbnail` | No | JPEG thumbnail image generated client-side |
 | `title` | No | Video title, auto-generated if not provided |
+| `preview_duration` | No | Preview length in seconds. Defaults to `preview_duration_default` from `GET /api/config`. Must be between `preview_duration_min` and `preview_duration_max` (default max 300s). |
 | `price` | Yes | Price in MIST (uint64, must be > 0) |
 
 > **Paid uploads require Wallet Signature authentication** (`action=upload`). See [Authentication](#authentication).
 >
-> **Preview generation is client-side**: The full unencrypted video is never sent to the server. The frontend must generate a short preview clip and send only the preview. The built-in SPA uses `MediaRecorder` (canvas + `captureStream`) to capture the first N seconds (default 10s, exposed at `GET /api/config` as `preview_duration`). External integrators can also use `ffmpeg.wasm`. If FFmpeg is available on the server, the preview duration is validated against `PAYLOCK_MAX_PREVIEW_DURATION` (default 30 seconds).
+> **Preview generation is client-side**: The full unencrypted video is never sent to the server. The frontend must generate a short preview clip and send only the preview. The built-in SPA uses `MediaRecorder` (canvas + `captureStream`) to capture the first N seconds (default 10s, exposed at `GET /api/config` as `preview_duration_default` with `preview_duration_min` / `preview_duration_max`). External integrators can also use `ffmpeg.wasm`. Paid uploads require FFmpeg/FFprobe on the server to validate preview duration; if disabled, paid uploads are rejected. Default max preview is 300s.
 
 **Success Response** (`202 Accepted`):
 
@@ -269,7 +271,7 @@ Initiate an async upload. The server validates the file and starts background pr
 
 | Status | Reason |
 |--------|--------|
-| `400` | Cannot read file / unsupported format / price not a positive integer / missing `preview` field for paid upload / invalid thumbnail format |
+| `400` | Cannot read file / unsupported format / price not a positive integer / missing `preview` field for paid upload / invalid thumbnail format / invalid `preview_duration` / paid upload with FFmpeg disabled |
 | `401` | Missing or invalid wallet signature (paid uploads) |
 | `413` | File exceeds size limit |
 
@@ -452,7 +454,10 @@ Get backend environment configuration. Integrators should use this API to get co
   "sui_network": "testnet",
   "walrus_publisher_url": "https://publisher.walrus-testnet.walrus.space",
   "walrus_aggregator_url": "https://aggregator.walrus-testnet.walrus.space",
-  "preview_duration": 10
+  "preview_duration": 10,
+  "preview_duration_default": 10,
+  "preview_duration_min": 10,
+  "preview_duration_max": 300
 }
 ```
 

@@ -69,8 +69,29 @@ func parsePriceField(r *http.Request) (uint64, *requestError) {
 	return price, nil
 }
 
+func parsePreviewDuration(r *http.Request, cfg *config.Config) (int, *requestError) {
+	v := r.FormValue("preview_duration")
+	if v == "" {
+		return cfg.PreviewDurationDefault, nil
+	}
+	sec, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, &requestError{http.StatusBadRequest, "invalid preview_duration: must be an integer number of seconds"}
+	}
+	if sec < cfg.MinPreviewDuration || sec > cfg.MaxPreviewDuration {
+		return 0, &requestError{http.StatusBadRequest, "invalid preview_duration: must be between " + strconv.Itoa(cfg.MinPreviewDuration) + " and " + strconv.Itoa(cfg.MaxPreviewDuration) + " seconds"}
+	}
+	return sec, nil
+}
+
 func (h *Upload) handleFreeUpload(w http.ResponseWriter, r *http.Request) {
 	data, title, reqErr := h.parseFreeRequest(r)
+	if reqErr != nil {
+		writeJSON(w, reqErr.status, map[string]string{"error": reqErr.msg})
+		return
+	}
+
+	previewDuration, reqErr := parsePreviewDuration(r, h.cfg)
 	if reqErr != nil {
 		writeJSON(w, reqErr.status, map[string]string{"error": reqErr.msg})
 		return
@@ -83,7 +104,7 @@ func (h *Upload) handleFreeUpload(w http.ResponseWriter, r *http.Request) {
 
 	h.videos.Create(id, title, 0, "")
 
-	go h.processAndUpload(id, data)
+	go h.processAndUpload(id, data, previewDuration)
 
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"id":     id,
@@ -95,6 +116,16 @@ func (h *Upload) handlePaidUpload(w http.ResponseWriter, r *http.Request, price 
 	auth := extractAndVerifyWalletAuth(r, h.verifier, h.clock, "upload", "")
 	if auth.err != "" {
 		writeJSON(w, auth.status, map[string]string{"error": auth.err})
+		return
+	}
+
+	if !h.cfg.FFmpegEnabled {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "paid uploads require ffmpeg/ffprobe to validate preview duration"})
+		return
+	}
+
+	if _, reqErr := parsePreviewDuration(r, h.cfg); reqErr != nil {
+		writeJSON(w, reqErr.status, map[string]string{"error": reqErr.msg})
 		return
 	}
 
@@ -198,7 +229,7 @@ func (h *Upload) processAndUploadPaid(id string, previewData, thumbnailData []by
 		return
 	}
 	previewBlobURL := h.walrus.BlobURL(previewBlobID)
-	h.videos.SetReady(id, thumbBlobID, thumbBlobURL, previewBlobID, previewBlobURL, "", "")
+	h.videos.SetPreviewUploaded(id, thumbBlobID, thumbBlobURL, previewBlobID, previewBlobURL)
 	slog.Info("preview uploaded to walrus (paid video, awaiting encrypted full blob)",
 		"id", id,
 		"preview_blob_id", previewBlobID,
@@ -206,12 +237,12 @@ func (h *Upload) processAndUploadPaid(id string, previewData, thumbnailData []by
 }
 
 // processAndUpload handles async processing for free video uploads.
-func (h *Upload) processAndUpload(id string, data []byte) {
+func (h *Upload) processAndUpload(id string, data []byte, previewDuration int) {
 	previewData := data
 	var thumbnailData []byte
 	if h.cfg.FFmpegEnabled {
 		var err error
-		previewData, err = processor.ExtractPreview(data, h.cfg.PreviewDuration, h.cfg.FFmpegPath)
+		previewData, err = processor.ExtractPreview(data, previewDuration, h.cfg.FFmpegPath)
 		if err != nil {
 			slog.Error("preview extraction failed", "id", id, "error", err)
 			h.videos.SetFailed(id, "preview extraction failed: "+err.Error())
