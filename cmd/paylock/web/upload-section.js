@@ -319,7 +319,7 @@ async function confirmUpload(fileInput) {
       ]);
 
       uploadState.value = { ...uploadState.value, step: 'onchain', previewDone: true, browserStep: 'done', text: 'Creating video on-chain...' };
-      const suiObjectId = await mod.createVideoOnChain(data.id, priceMist, video.preview_blob_id, encResult.fullBlobId, encResult.namespace);
+      const suiObjectId = await mod.createVideoOnChain(data.id, priceMist, video.preview_blob_id, encResult.fullBlobId, encResult.namespace, data.session_token);
       navigateId = suiObjectId;
     } else {
       uploadState.value = { ...uploadState.value, showSpinner: true, text: 'Processing video...' };

@@ -277,7 +277,7 @@ export async function disconnectWallet() {
   };
 }
 
-export async function createVideoOnChain(videoId, price, previewBlobId, fullBlobId, sealNamespace) {
+export async function createVideoOnChain(videoId, price, previewBlobId, fullBlobId, sealNamespace, sessionToken) {
   if (!connectedWallet || !connectedAccount) throw new Error('Wallet not connected');
   if (!gatingPackageId) throw new Error('Gating contract not configured');
   if (!Transaction || !signAndExecuteTransaction) throw new Error('Sui SDK not loaded');
@@ -315,7 +315,9 @@ export async function createVideoOnChain(videoId, price, previewBlobId, fullBlob
   const suiObjectId = created.objectId;
 
   const putHeaders = { 'Content-Type': 'application/json' };
-  if (connectedAccount) {
+  if (sessionToken) {
+    putHeaders['X-Session-Token'] = sessionToken;
+  } else if (connectedAccount) {
     const auth = await signForAuth('update', videoId);
     setAuthHeaders(putHeaders, auth);
   }

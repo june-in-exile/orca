@@ -28,10 +28,11 @@ type Upload struct {
 	cfg      *config.Config
 	verifier SigVerifier
 	clock    suiauth.Clock
+	sessions *SessionStore
 }
 
-func NewUpload(w Storer, videos *model.VideoStore, cfg *config.Config, verifier SigVerifier, clock suiauth.Clock) *Upload {
-	return &Upload{walrus: w, videos: videos, cfg: cfg, verifier: verifier, clock: clock}
+func NewUpload(w Storer, videos *model.VideoStore, cfg *config.Config, verifier SigVerifier, clock suiauth.Clock, sessions *SessionStore) *Upload {
+	return &Upload{walrus: w, videos: videos, cfg: cfg, verifier: verifier, clock: clock, sessions: sessions}
 }
 
 func (h *Upload) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -113,10 +114,14 @@ func (h *Upload) handlePaidUpload(w http.ResponseWriter, r *http.Request, price 
 
 	go h.processAndUploadPaid(id, previewData, thumbnailData)
 
-	writeJSON(w, http.StatusAccepted, map[string]any{
+	resp := map[string]any{
 		"id":     id,
 		"status": model.StatusProcessing,
-	})
+	}
+	if h.sessions != nil {
+		resp["session_token"] = h.sessions.Create(auth.address)
+	}
+	writeJSON(w, http.StatusAccepted, resp)
 }
 
 func (h *Upload) parseFreeRequest(r *http.Request) ([]byte, string, *requestError) {

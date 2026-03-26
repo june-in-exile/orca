@@ -87,7 +87,7 @@ export function PlayerView() {
   const [showPaywall, setShowPaywall] = useState(false);
   const [showLoading, setShowLoading] = useState(false);
   const [hint, setHint] = useState('');
-  const [purchaseText, setPurchaseText] = useState('Purchase & Unlock');
+  const [purchaseText, setPurchaseText] = useState('Unlock');
   const [purchasing, setPurchasing] = useState(false);
   const [hasAccess, setHasAccess] = useState(false);
   const videoRef = useRef(null);
@@ -232,7 +232,7 @@ export function PlayerView() {
   useEffect(() => {
     if (purchasing) return;
     if (hasAccess) setPurchaseText('Unlock');
-    else setPurchaseText('Purchase & Unlock');
+    else setPurchaseText('Unlock');
   }, [hasAccess, purchasing]);
 
   async function tryAutoDecrypt(v, el) {
@@ -339,7 +339,7 @@ export function PlayerView() {
         } catch (recoverErr) {
           setHint('Recovery failed: ' + recoverErr.message);
           setPurchasing(false);
-          setPurchaseText('Purchase & Unlock');
+          setPurchaseText('Unlock');
           return;
         }
       }
@@ -347,7 +347,7 @@ export function PlayerView() {
       if (!video.full_blob_url) {
         setHint('Encrypted blob not available — the upload may have been interrupted');
         setPurchasing(false);
-        setPurchaseText('Purchase & Unlock');
+        setPurchaseText('Unlock');
         return;
       }
 
@@ -365,7 +365,7 @@ export function PlayerView() {
       setPurchasing(false);
     } catch (err) {
       setPurchasing(false);
-      setPurchaseText('Purchase & Unlock');
+      setPurchaseText('Unlock');
       setHint('Failed: ' + err.message);
     }
   }
@@ -412,7 +412,7 @@ export function PlayerView() {
             disabled=${purchasing}
             onclick=${handlePurchase}
           >
-            ${purchasing ? purchaseText : `Purchase ${formatSui(video.price)} SUI`}
+            ${purchasing ? purchaseText : `${formatSui(video.price)} SUI Unlock`}
           </button>
         `}
 

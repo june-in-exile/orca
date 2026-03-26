@@ -13,10 +13,11 @@ type SetSuiObject struct {
 	walrus   Storer
 	verifier SigVerifier
 	clock    suiauth.Clock
+	sessions *SessionStore
 }
 
-func NewSetSuiObject(videos *model.VideoStore, walrus Storer, verifier SigVerifier, clock suiauth.Clock) *SetSuiObject {
-	return &SetSuiObject{videos: videos, walrus: walrus, verifier: verifier, clock: clock}
+func NewSetSuiObject(videos *model.VideoStore, walrus Storer, verifier SigVerifier, clock suiauth.Clock, sessions *SessionStore) *SetSuiObject {
+	return &SetSuiObject{videos: videos, walrus: walrus, verifier: verifier, clock: clock, sessions: sessions}
 }
 
 func (h *SetSuiObject) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -55,16 +56,32 @@ func (h *SetSuiObject) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if video.Creator != "" {
-		auth := extractAndVerifyWalletAuth(r, h.verifier, h.clock, "update", id)
-		if auth.err != "" {
-			writeJSON(w, auth.status, map[string]string{"error": auth.err})
-			return
-		}
-		if !verifyOwnership(video, auth.address) {
-			writeJSON(w, http.StatusForbidden, map[string]string{
-				"error": "forbidden: wallet address does not match video creator",
-			})
-			return
+		if token := r.Header.Get("X-Session-Token"); token != "" && h.sessions != nil {
+			addr, ok := h.sessions.Validate(token)
+			if !ok {
+				writeJSON(w, http.StatusUnauthorized, map[string]string{
+					"error": "session expired or invalid",
+				})
+				return
+			}
+			if !verifyOwnership(video, addr) {
+				writeJSON(w, http.StatusForbidden, map[string]string{
+					"error": "forbidden: wallet address does not match video creator",
+				})
+				return
+			}
+		} else {
+			auth := extractAndVerifyWalletAuth(r, h.verifier, h.clock, "update", id)
+			if auth.err != "" {
+				writeJSON(w, auth.status, map[string]string{"error": auth.err})
+				return
+			}
+			if !verifyOwnership(video, auth.address) {
+				writeJSON(w, http.StatusForbidden, map[string]string{
+					"error": "forbidden: wallet address does not match video creator",
+				})
+				return
+			}
 		}
 	}
 

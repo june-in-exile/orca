@@ -77,16 +77,17 @@ func main() {
 
 	sigVerifier := suiauth.New()
 	clock := suiauth.SystemClock()
+	sessions := handler.NewSessionStore(15 * time.Minute)
 
 	mux := http.NewServeMux()
 
 	// API routes
-	mux.Handle("POST /api/upload", handler.NewUpload(wc, videos, cfg, sigVerifier, clock))
+	mux.Handle("POST /api/upload", handler.NewUpload(wc, videos, cfg, sigVerifier, clock, sessions))
 	mux.Handle("GET /api/status/{id}", handler.NewStatus(videos))
 	mux.Handle("GET /api/status/{id}/events", handler.NewStatusEvents(videos))
 	mux.Handle("GET /api/videos", handler.NewVideos(videos))
 	mux.Handle("DELETE /api/videos/{id}", handler.NewDelete(videos, sigVerifier, clock))
-	mux.Handle("PUT /api/videos/{id}", handler.NewSetSuiObject(videos, wc, sigVerifier, clock))
+	mux.Handle("PUT /api/videos/{id}", handler.NewSetSuiObject(videos, wc, sigVerifier, clock, sessions))
 	mux.Handle("GET /api/config", handler.NewAppConfig(cfg))
 	mux.Handle("POST /api/reindex", handler.NewReindex(idx, videos, wc.BlobURL, cfg.AdminSecret))
 

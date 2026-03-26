@@ -34,7 +34,20 @@ To balance security and performance, PayLock uses a hybrid flow of "backend prep
 3. **On-Chain Publishing (TX)**:
    - Frontend initiates a transaction calling `create_video`.
    - Passes `price`, `preview_blob_id`, `full_blob_id` (encrypted), and `seal_namespace`.
-   - After the transaction succeeds, calls `PUT /api/videos/{id}` to link the on-chain ID with the backend record.
+   - After the transaction succeeds, calls `PUT /api/videos/{id}` to link the on-chain ID with the backend record. This request is authenticated via the session token returned in step 1 (no additional wallet signature required).
+
+### Wallet Signing Flow
+
+Paid video uploads require **2 wallet interactions**:
+
+| # | Type | When | Purpose |
+|---|------|------|---------|
+| 1 | **Sign Personal Message** | Before `POST /api/upload` | Identity verification — the backend verifies that the caller owns the wallet address (Ed25519 signature over `paylock:upload::timestamp`). The response includes a short-lived `session_token` (15 min TTL) for subsequent requests. |
+| 2 | **Sign & Execute Transaction** | After encryption & Walrus upload | On-chain publishing — calls `gating::create_video` to write video metadata (price, blob IDs, Seal namespace) to the Sui blockchain and create a `Video` object. |
+
+Free video uploads require **no wallet signatures** (no on-chain interaction needed).
+
+The `PUT /api/videos/{id}` call (linking the on-chain object ID back to the server) reuses the session token from sign #1, so it does not trigger an additional wallet popup.
 
 ### System Components
 
