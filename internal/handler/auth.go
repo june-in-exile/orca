@@ -14,7 +14,7 @@ import (
 const (
 	headerWalletAddress   = "X-Wallet-Address"
 	headerWalletSig       = "X-Wallet-Sig"
-	headerWalletTimestamp  = "X-Wallet-Timestamp"
+	headerWalletTimestamp = "X-Wallet-Timestamp"
 	authWindowSeconds     = 60
 	maxResourceIDLen      = 128
 )
