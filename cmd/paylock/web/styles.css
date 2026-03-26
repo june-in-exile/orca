@@ -409,9 +409,15 @@ h2 {
   transition: all 0.2s;
 }
 
-.btn:hover {
+.btn:hover:not(:disabled) {
   background: #222222;
   border-color: var(--accent-hover);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: var(--text-muted);
 }
 
 .btn-sm {
