@@ -183,6 +183,7 @@ export function PlayerView() {
     // Free video: play full blob directly
     if (video.price === 0 && video.full_blob_url) {
       el.src = video.full_blob_url;
+      el.muted = true;
       el.play().catch(() => {});
       return;
     }
@@ -263,6 +264,7 @@ export function PlayerView() {
       el.onended = null;
       setShowPaywall(false);
       el.src = blobUrl;
+      el.muted = true;
       el.play().catch(() => {});
     } catch (err) {
       setHint('Auto-decrypt failed: ' + err.message);
@@ -273,6 +275,7 @@ export function PlayerView() {
   function playPreview(v, el) {
     if (v.preview_blob_url) {
       el.src = v.preview_blob_url;
+      el.muted = true;
       el.play().catch(() => {});
     }
     if (v.price > 0) {
@@ -357,6 +360,7 @@ export function PlayerView() {
       el.onended = null;
       setShowPaywall(false);
       el.src = blobUrl;
+      el.muted = true;
       el.play().catch(() => {});
       setPurchasing(false);
     } catch (err) {
@@ -381,7 +385,7 @@ export function PlayerView() {
       </div>
 
       <div class="player-container" style="position: relative;">
-        <video ref=${videoRef} controls></video>
+        <video ref=${videoRef} controls muted autoplay></video>
 
         ${showLoading && html`
           <div class="player-loading-overlay" style="display: flex;">

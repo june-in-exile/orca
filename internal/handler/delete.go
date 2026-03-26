@@ -35,7 +35,9 @@ func (h *Delete) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if video.Creator != "" {
+	// Videos not yet published on-chain can be deleted without auth (cleanup of failed uploads).
+	// Once on-chain, require creator signature.
+	if video.Creator != "" && video.SuiObjectID != "" {
 		auth := extractAndVerifyWalletAuth(r, h.verifier, h.clock, "delete", id)
 		if auth.err != "" {
 			writeJSON(w, auth.status, map[string]string{"error": auth.err})

@@ -296,8 +296,9 @@ async function confirmUpload(fileInput) {
     setAuthHeaders(authHeaders, auth);
   }
 
+  let data = null;
   try {
-    const data = await sendUpload(formData, file.name, authHeaders);
+    data = await sendUpload(formData, file.name, authHeaders);
 
     let navigateId = data.id;
 
@@ -334,6 +335,12 @@ async function confirmUpload(fileInput) {
     showToast('success', 'Upload complete!');
     navigate('player', { id: navigateId });
   } catch (err) {
+    // Paid upload failed after preview was already uploaded — clean up the orphaned video
+    if (priceMist > 0 && data) {
+      try {
+        await fetch('/api/videos/' + encodeURIComponent(data.id), { method: 'DELETE' });
+      } catch (_) { /* best-effort cleanup */ }
+    }
     uploadState.value = { active: false, percent: 0, text: '', step: null, showSpinner: false, showSteps: false };
     showToast('error', 'Upload failed: ' + err.message, 5000);
   }
@@ -343,7 +350,10 @@ export function UploadSection() {
   const inputRef = useRef(null);
   const staged = stagedFile.value;
 
+  const isUploading = uploadState.value.active;
+
   const handleUploadAction = useCallback(() => {
+    if (uploadState.value.active) return;
     if (staged) {
       confirmUpload(inputRef.current);
     } else if (inputRef.current) {
@@ -376,7 +386,7 @@ export function UploadSection() {
 
         <div style="display:flex; align-items:center; justify-content:flex-end;">
           <div style="display:flex; gap:0.75rem; align-items:center;">
-            <button class="btn" onclick=${handleUploadAction}>
+            <button class="btn" onclick=${handleUploadAction} disabled=${isUploading}>
               ${staged ? 'Confirm Upload' : 'Select Video'}
             </button>
             <input type="file" ref=${inputRef} accept="video/mp4,video/quicktime,video/webm,video/x-matroska,video/avi,.mp4,.mov,.webm,.mkv,.avi" style="display:none" onchange=${onFileChange} />

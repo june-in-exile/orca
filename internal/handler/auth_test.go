@@ -35,9 +35,26 @@ func setAuthHeaders(req *http.Request, addr, sig, ts string) {
 
 // --- Delete tests ---
 
+func TestDelete_AllowsNoAuthBeforeOnChain(t *testing.T) {
+	videos := mustNewVideoStore(t)
+	videos.Create("vid-001", "Test", 100, "0xAlice")
+	h := NewDelete(videos, &mockVerifier{}, suiauth.FixedClock(time.Now().Unix()))
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/videos/vid-001", nil)
+	req.SetPathValue("id", "vid-001")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for pre-chain video without auth, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestDelete_RequiresCreatorAuth(t *testing.T) {
 	videos := mustNewVideoStore(t)
 	videos.Create("vid-001", "Test", 100, "0xAlice")
+	videos.SetSuiObjectID("vid-001", "0xOBJ1", "blob1", "https://agg/blob1")
 	v := &mockVerifier{address: "0xBob", err: nil}
 	h := NewDelete(videos, v, suiauth.FixedClock(time.Now().Unix()))
 
@@ -56,6 +73,7 @@ func TestDelete_RequiresCreatorAuth(t *testing.T) {
 func TestDelete_AllowsCorrectCreator(t *testing.T) {
 	videos := mustNewVideoStore(t)
 	videos.Create("vid-001", "Test", 100, "0xAlice")
+	videos.SetSuiObjectID("vid-001", "0xOBJ1", "blob1", "https://agg/blob1")
 	v := &mockVerifier{address: "0xAlice", err: nil}
 	h := NewDelete(videos, v, suiauth.FixedClock(time.Now().Unix()))
 
@@ -74,6 +92,7 @@ func TestDelete_AllowsCorrectCreator(t *testing.T) {
 func TestDelete_AllowsCaseInsensitiveCreator(t *testing.T) {
 	videos := mustNewVideoStore(t)
 	videos.Create("vid-001", "Test", 100, "0xAbCdEf")
+	videos.SetSuiObjectID("vid-001", "0xOBJ1", "blob1", "https://agg/blob1")
 	v := &mockVerifier{address: "0xabcdef", err: nil}
 	h := NewDelete(videos, v, suiauth.FixedClock(time.Now().Unix()))
 
@@ -108,6 +127,7 @@ func TestDelete_AllowsNoCreatorVideo(t *testing.T) {
 func TestDelete_MissingAuthHeaders(t *testing.T) {
 	videos := mustNewVideoStore(t)
 	videos.Create("vid-001", "Test", 100, "0xAlice")
+	videos.SetSuiObjectID("vid-001", "0xOBJ1", "blob1", "https://agg/blob1")
 	h := NewDelete(videos, &mockVerifier{}, suiauth.FixedClock(time.Now().Unix()))
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/videos/vid-001", nil)
@@ -124,6 +144,7 @@ func TestDelete_MissingAuthHeaders(t *testing.T) {
 func TestDelete_InvalidSignature(t *testing.T) {
 	videos := mustNewVideoStore(t)
 	videos.Create("vid-001", "Test", 100, "0xAlice")
+	videos.SetSuiObjectID("vid-001", "0xOBJ1", "blob1", "https://agg/blob1")
 	v := &mockVerifier{address: "", err: errors.New("bad sig")}
 	h := NewDelete(videos, v, suiauth.FixedClock(time.Now().Unix()))
 
@@ -142,6 +163,7 @@ func TestDelete_InvalidSignature(t *testing.T) {
 func TestDelete_ExpiredTimestamp(t *testing.T) {
 	videos := mustNewVideoStore(t)
 	videos.Create("vid-001", "Test", 100, "0xAlice")
+	videos.SetSuiObjectID("vid-001", "0xOBJ1", "blob1", "https://agg/blob1")
 	v := &mockVerifier{address: "0xAlice", err: nil}
 	// Clock is at T=1000, but request timestamp will be T=100 (900s ago)
 	h := NewDelete(videos, v, suiauth.FixedClock(1000))
