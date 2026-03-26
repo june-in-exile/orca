@@ -181,6 +181,21 @@ func (s *VideoStore) SetReady(id, thumbnailBlobID, thumbnailBlobURL, previewBlob
 	}
 }
 
+// SetPreviewUploaded stores the preview and thumbnail blob IDs for a paid video
+// while keeping the status as "processing". The video transitions to "ready"
+// only when SetSuiObjectID is called after on-chain publish.
+func (s *VideoStore) SetPreviewUploaded(id, thumbnailBlobID, thumbnailBlobURL, previewBlobID, previewBlobURL string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if v, ok := s.videos[id]; ok {
+		v.ThumbnailBlobID = thumbnailBlobID
+		v.ThumbnailBlobURL = thumbnailBlobURL
+		v.PreviewBlobID = previewBlobID
+		v.PreviewBlobURL = previewBlobURL
+		s.persist()
+	}
+}
+
 func (s *VideoStore) SetSuiObjectID(id, suiObjectID, fullBlobID, fullBlobURL string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -193,6 +208,10 @@ func (s *VideoStore) SetSuiObjectID(id, suiObjectID, fullBlobID, fullBlobURL str
 	if fullBlobID != "" {
 		v.FullBlobID = fullBlobID
 		v.FullBlobURL = fullBlobURL
+	}
+	if v.Status == StatusProcessing {
+		v.Status = StatusReady
+		s.notify(id)
 	}
 	s.persist()
 	return true

@@ -80,6 +80,24 @@ func TestVideoStore_SetReady(t *testing.T) {
 	}
 }
 
+func TestVideoStore_SetPreviewUploaded(t *testing.T) {
+	store := newTestStore(t)
+	store.Create("test-1", "Paid Video", 100, "0xAlice")
+
+	store.SetPreviewUploaded("test-1", "thumbBlob", "tURL", "previewBlob", "pURL")
+
+	v, _ := store.Get("test-1")
+	if v.Status != StatusProcessing {
+		t.Errorf("expected status processing after preview upload, got %s", v.Status)
+	}
+	if v.PreviewBlobID != "previewBlob" {
+		t.Errorf("expected preview_blob_id previewBlob, got %s", v.PreviewBlobID)
+	}
+	if v.ThumbnailBlobID != "thumbBlob" {
+		t.Errorf("expected thumbnail_blob_id thumbBlob, got %s", v.ThumbnailBlobID)
+	}
+}
+
 func TestVideoStore_SetSuiObjectID(t *testing.T) {
 	store := newTestStore(t)
 	store.Create("test-1", "My Video", 0, "")
@@ -92,6 +110,34 @@ func TestVideoStore_SetSuiObjectID(t *testing.T) {
 	v, _ := store.Get("test-1")
 	if v.SuiObjectID != "0xABC123" {
 		t.Errorf("expected sui_object_id 0xABC123, got %s", v.SuiObjectID)
+	}
+	if v.Status != StatusReady {
+		t.Errorf("expected status ready after SetSuiObjectID, got %s", v.Status)
+	}
+}
+
+func TestVideoStore_SetSuiObjectID_PaidFlow(t *testing.T) {
+	store := newTestStore(t)
+	store.Create("paid-1", "Paid Video", 100, "0xAlice")
+
+	// After preview upload, status stays processing
+	store.SetPreviewUploaded("paid-1", "tb", "tURL", "pb", "pURL")
+	v, _ := store.Get("paid-1")
+	if v.Status != StatusProcessing {
+		t.Errorf("expected processing after preview upload, got %s", v.Status)
+	}
+
+	// After on-chain publish, status becomes ready
+	ok := store.SetSuiObjectID("paid-1", "0xOBJ", "fullBlob", "fURL")
+	if !ok {
+		t.Fatal("expected SetSuiObjectID to return true")
+	}
+	v, _ = store.Get("paid-1")
+	if v.Status != StatusReady {
+		t.Errorf("expected ready after SetSuiObjectID, got %s", v.Status)
+	}
+	if v.FullBlobID != "fullBlob" {
+		t.Errorf("expected full_blob_id fullBlob, got %s", v.FullBlobID)
 	}
 }
 

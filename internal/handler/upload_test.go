@@ -31,14 +31,22 @@ func (m *mockStorer) BlobURL(blobID string) string {
 
 func newTestConfig() *config.Config {
 	return &config.Config{
-		MaxFileSize:        500 * 1024 * 1024,
-		MaxPreviewSize:     50 * 1024 * 1024,
-		MaxPreviewDuration: 30,
-		WalrusEpochs:       1,
-		FFmpegEnabled:      false,
-		FFmpegPath:         "ffmpeg",
-		PreviewDuration:    2,
+		MaxFileSize:            500 * 1024 * 1024,
+		MaxPreviewSize:         50 * 1024 * 1024,
+		MaxPreviewDuration:     300,
+		MinPreviewDuration:     10,
+		WalrusEpochs:           1,
+		FFmpegEnabled:          false,
+		FFmpegPath:             "ffmpeg",
+		FFprobePath:            "ffprobe",
+		PreviewDurationDefault: 10,
 	}
+}
+
+func newPaidTestConfig() *config.Config {
+	cfg := newTestConfig()
+	cfg.FFmpegEnabled = true
+	return cfg
 }
 
 func createMultipartRequest(t *testing.T, fieldName, filename string, data []byte, fields map[string]string) *http.Request {
@@ -193,7 +201,7 @@ func TestUpload_PaidPreview_Accepted(t *testing.T) {
 	}}
 	videos := mustNewVideoStore(t)
 	v := &mockVerifier{address: "0xAlice", err: nil}
-	h := NewUpload(store, videos, newTestConfig(), v, suiauth.FixedClock(time.Now().Unix()), nil)
+	h := NewUpload(store, videos, newPaidTestConfig(), v, suiauth.FixedClock(time.Now().Unix()))
 
 	req := createPaidMultipartRequest(t, mp4Data, nil, map[string]string{
 		"price": "100000000",
@@ -223,7 +231,7 @@ func TestUpload_PaidPreview_MissingPreviewField(t *testing.T) {
 	}}
 	videos := mustNewVideoStore(t)
 	v := &mockVerifier{address: "0xAlice", err: nil}
-	h := NewUpload(store, videos, newTestConfig(), v, suiauth.FixedClock(time.Now().Unix()), nil)
+	h := NewUpload(store, videos, newPaidTestConfig(), v, suiauth.FixedClock(time.Now().Unix()))
 
 	// Send "video" field instead of "preview" — should fail
 	req := createMultipartRequest(t, "video", "test.mp4", mp4Data, map[string]string{
@@ -245,7 +253,7 @@ func TestUpload_PaidPreview_InvalidFormat(t *testing.T) {
 	}}
 	videos := mustNewVideoStore(t)
 	v := &mockVerifier{address: "0xAlice", err: nil}
-	h := NewUpload(store, videos, newTestConfig(), v, suiauth.FixedClock(time.Now().Unix()), nil)
+	h := NewUpload(store, videos, newPaidTestConfig(), v, suiauth.FixedClock(time.Now().Unix()))
 
 	req := createPaidMultipartRequest(t, []byte("not a valid video format!!"), nil, map[string]string{
 		"price": "100000000",
@@ -265,7 +273,7 @@ func TestUpload_PaidPreview_PreviewTooLarge(t *testing.T) {
 		return "blob1", nil
 	}}
 	videos := mustNewVideoStore(t)
-	cfg := newTestConfig()
+	cfg := newPaidTestConfig()
 	cfg.MaxPreviewSize = 100 // 100 bytes — tiny limit for test
 	v := &mockVerifier{address: "0xAlice", err: nil}
 	h := NewUpload(store, videos, cfg, v, suiauth.FixedClock(time.Now().Unix()), nil)
@@ -296,7 +304,7 @@ func TestUpload_PaidPreview_WithThumbnail(t *testing.T) {
 	}}
 	videos := mustNewVideoStore(t)
 	v := &mockVerifier{address: "0xAlice", err: nil}
-	h := NewUpload(store, videos, newTestConfig(), v, suiauth.FixedClock(time.Now().Unix()), nil)
+	h := NewUpload(store, videos, newPaidTestConfig(), v, suiauth.FixedClock(time.Now().Unix()))
 
 	req := createPaidMultipartRequest(t, mp4Data, jpegData, map[string]string{
 		"price": "100000000",
@@ -320,7 +328,7 @@ func TestUpload_PaidPreview_InvalidThumbnail(t *testing.T) {
 	}}
 	videos := mustNewVideoStore(t)
 	v := &mockVerifier{address: "0xAlice", err: nil}
-	h := NewUpload(store, videos, newTestConfig(), v, suiauth.FixedClock(time.Now().Unix()), nil)
+	h := NewUpload(store, videos, newPaidTestConfig(), v, suiauth.FixedClock(time.Now().Unix()))
 
 	req := createPaidMultipartRequest(t, mp4Data, []byte("not a jpeg"), map[string]string{
 		"price": "100000000",
@@ -335,7 +343,7 @@ func TestUpload_PaidPreview_InvalidThumbnail(t *testing.T) {
 	}
 }
 
-func TestUpload_PaidPreview_NoFFmpegRequired(t *testing.T) {
+func TestUpload_PaidPreview_NoFFmpegRejected(t *testing.T) {
 	mp4Data := testutil.TestMP4(t)
 
 	var callCount atomic.Int32
@@ -357,8 +365,8 @@ func TestUpload_PaidPreview_NoFFmpegRequired(t *testing.T) {
 
 	h.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusAccepted {
-		t.Fatalf("expected 202 even without ffmpeg, got %d: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 when ffmpeg is disabled for paid uploads, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

@@ -24,7 +24,7 @@ To balance security and performance, PayLock uses a hybrid flow of "backend prep
 1. **Frontend Preview Generation + Backend Upload**:
    - Frontend generates a short preview clip (default 10s) using `MediaRecorder` (canvas + `captureStream`). External integrators can alternatively use `ffmpeg.wasm`.
    - Frontend uploads the preview (+ optional thumbnail) to `POST /api/upload`.
-   - Backend validates the preview duration via `ffprobe` (if FFmpeg is available) against `PAYLOCK_MAX_PREVIEW_DURATION` (default 30s), then uploads to Walrus.
+   - Backend validates the preview duration via `ffprobe` (if FFmpeg is available) against `PAYLOCK_MAX_PREVIEW_DURATION` (default 300s), then uploads to Walrus.
    - Notifies the frontend via `GET /api/status/{id}/events` (SSE) when the preview is ready.
 
 2. **Frontend Encryption & Upload**:
