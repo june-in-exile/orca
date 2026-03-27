@@ -193,7 +193,7 @@ export function PlayerView() {
       interval = setInterval(async () => {
         if (cancelled) { clearInterval(interval); return; }
         try {
-          const r = await fetch('/api/status/' + encodeURIComponent(params.id));
+          const r = await fetch('/api/videos/' + encodeURIComponent(params.id));
           if (cancelled) { clearInterval(interval); return; }
           if (!r.ok) return;
           const v = await r.json();
@@ -205,7 +205,7 @@ export function PlayerView() {
 
     async function load() {
       try {
-        const res = await fetch('/api/status/' + encodeURIComponent(params.id));
+        const res = await fetch('/api/videos/' + encodeURIComponent(params.id));
         if (cancelled) return;
         if (!res.ok) { setStatus('not found'); return; }
         const data = await res.json();
@@ -218,7 +218,7 @@ export function PlayerView() {
           setStatus('processing');
 
           if (typeof EventSource !== 'undefined') {
-            es = new EventSource('/api/status/' + encodeURIComponent(params.id) + '/events');
+            es = new EventSource('/api/videos/' + encodeURIComponent(params.id));
             es.onmessage = (e) => {
               if (cancelled) { es.close(); return; }
               const v = JSON.parse(e.data);
@@ -317,7 +317,7 @@ export function PlayerView() {
       // Recover full_blob_url from chain if missing
       if (!v.full_blob_url) {
         await mod.recoverFullBlobId(v);
-        const res = await fetch('/api/status/' + encodeURIComponent(v.id));
+        const res = await fetch('/api/videos/' + encodeURIComponent(v.id));
         if (!res.ok) { playPreview(v, el); return; }
         v = await res.json();
         setVideo(v);
@@ -398,7 +398,7 @@ export function PlayerView() {
         setPurchaseText('Recovering blob ID from chain...');
         try {
           const fullBlobId = await mod.recoverFullBlobId(video);
-          const res = await fetch('/api/status/' + encodeURIComponent(video.id));
+          const res = await fetch('/api/videos/' + encodeURIComponent(video.id));
           if (res.ok) {
             const refreshed = await res.json();
             setVideo(refreshed);

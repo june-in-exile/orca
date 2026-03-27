@@ -37,12 +37,10 @@ PayLock is a video upload service that stores video files on Walrus decentralize
 
 ```
 cmd/paylock/main.go          — wires all packages; route groups:
-                            POST /api/upload, GET /api/status/{id}
-                            GET /api/videos
-                            DELETE /api/videos/{id}
+                            POST /api/upload, GET /api/videos/{id}
+                            GET /api/videos, DELETE /api/videos/{id}
+                            GET /api/status/{id} (SSE)
                             GET /api/config
-                            GET /stream/{id}/preview → canonical: sui_object_id; legacy: paylock_id (307 redirect)
-                            GET /stream/{id}/full
 
 internal/config/          — env-based config
 internal/model/           — VideoStore (sync.RWMutex + JSON file persistence + sui_object_id secondary index)
@@ -50,19 +48,17 @@ internal/walrus/          — Walrus HTTP client (Store, BlobURL)
 internal/processor/       — MP4/JPEG magic-byte validators + size validator + preview duration validator
 internal/handler/         — HTTP handlers; upload validates then async uploads to Walrus
 internal/indexer/         — Sui chain reindexer (scans on-chain Video objects via JSON-RPC)
-internal/middleware/      — CORS middleware
 ```
 
 ### Key design decisions
 
-- **Upload flow is async**: `POST /api/upload` validates the MP4 (magic bytes), returns `202 processing` immediately; a goroutine uploads to Walrus; poll `GET /api/status/{id}` for `ready`/`failed`.
+- **Upload flow is async**: `POST /api/upload` validates the MP4 (magic bytes), returns `202 processing` immediately; a goroutine uploads to Walrus; poll `GET /api/videos/{id}` for `ready`/`failed`.
 - **Paid vs free upload split**: Free videos upload both blobs server-side. Paid videos: the frontend generates the preview locally (e.g., via `ffmpeg.wasm`) and sends only the preview clip + optional JPEG thumbnail to the server. The full unencrypted video never reaches the server. The frontend handles Seal encryption + Walrus upload of the full blob. FFmpeg/FFprobe is required on the server for paid uploads to validate preview duration.
 - **Seal encryption (Phase 2)**: Full blob of paid videos is encrypted with `@mysten/seal` in the browser. The flow: generate random 32-byte namespace → encrypt with Seal using namespace as prefix → upload encrypted blob to Walrus → create Video on-chain with blob IDs and namespace (single transaction).
 - **Purchase flow**: User pays via `purchase_and_transfer` → mints AccessPass → Seal SessionKey + `seal_approve` tx → decrypt encrypted blob in browser → play via blob URL.
 - **No local file storage**: Videos go directly to Walrus. No HLS segmentation.
 - **VideoStore persists to disk**: Video metadata is saved as `videos.json` in `PAYLOCK_DATA_DIR` (default `data/`). Deleting the file only removes local records; Walrus blobs are unaffected.
-- **Canonical ID = sui_object_id**: External discovery and streaming use `sui_object_id`. `paylock_id` is a temporary internal workflow ID used during upload. Stream routes accessed by `paylock_id` redirect to the canonical `sui_object_id` URL when available, with `Deprecation` headers.
+- **Canonical ID = sui_object_id**: External discovery uses `sui_object_id`. `paylock_id` is a temporary internal workflow ID used during upload.
 - **Chain reindexer**: On startup, the server scans the Sui chain for all `Video` objects created by the gating package and populates the VideoStore. If `videos.json` is missing, the store is rebuilt from chain state.
-- **Stream endpoint redirects**: `GET /stream/{id}` returns a 307 redirect to the Walrus aggregator blob URL. Supports both `paylock_id` and `sui_object_id` lookups.
 - **Supported video formats**: MP4, MOV (ftyp box), WebM, MKV (EBML header), AVI (RIFF/AVI). Validated by magic bytes, not file extension.
 - **Frontend uses native `<video>`**: No HLS.js dependency. The browser plays MP4 directly from the Walrus aggregator URL (or from decrypted blob URL for paid videos).

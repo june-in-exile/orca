@@ -145,7 +145,7 @@ function sendUpload(formData, fileName, authHeaders) {
 function pollUntilReady(id) {
   return new Promise((resolve, reject) => {
     if (typeof EventSource !== 'undefined') {
-      const es = new EventSource('/api/status/' + encodeURIComponent(id) + '/events');
+      const es = new EventSource('/api/videos/' + encodeURIComponent(id));
       es.onmessage = (e) => {
         const video = JSON.parse(e.data);
         if (video.status === 'ready') { es.close(); resolve(video); }
@@ -162,7 +162,7 @@ function pollUntilSuiObjectId(id) {
   return new Promise((resolve, reject) => {
     const poll = async () => {
       try {
-        const res = await fetch('/api/status/' + encodeURIComponent(id));
+        const res = await fetch('/api/videos/' + encodeURIComponent(id));
         if (!res.ok) { reject(new Error('Status check failed')); return; }
         const video = await res.json();
         if (video.sui_object_id) { resolve(video); return; }
@@ -310,7 +310,7 @@ function pollFallback(id) {
   return new Promise((resolve, reject) => {
     const interval = setInterval(async () => {
       try {
-        const res = await fetch('/api/status/' + encodeURIComponent(id));
+        const res = await fetch('/api/videos/' + encodeURIComponent(id));
         if (!res.ok) return;
         const video = await res.json();
         if (video.status === 'ready') { clearInterval(interval); resolve(video); }
@@ -323,7 +323,7 @@ function pollFallback(id) {
 function pollUntilPreviewUploaded(id) {
   return new Promise((resolve, reject) => {
     if (typeof EventSource !== 'undefined') {
-      const es = new EventSource('/api/status/' + encodeURIComponent(id) + '/events');
+      const es = new EventSource('/api/videos/' + encodeURIComponent(id));
       es.onmessage = (e) => {
         const video = JSON.parse(e.data);
         if (video.status === 'failed') { es.close(); reject(new Error(video.error || 'Upload failed')); }
@@ -333,7 +333,7 @@ function pollUntilPreviewUploaded(id) {
         es.close();
         const interval = setInterval(async () => {
           try {
-            const res = await fetch('/api/status/' + encodeURIComponent(id));
+            const res = await fetch('/api/videos/' + encodeURIComponent(id));
             if (!res.ok) return;
             const video = await res.json();
             if (video.status === 'failed') { clearInterval(interval); reject(new Error(video.error || 'Upload failed')); }

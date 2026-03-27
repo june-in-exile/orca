@@ -547,6 +547,8 @@ h2 {
 
 .player-container video {
   width: 100%;
+  max-height: 75vh;
+  object-fit: contain;
   display: block;
 }
 

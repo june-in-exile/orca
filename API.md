@@ -78,12 +78,6 @@ paylock:<action>:<resourceId>:<timestamp>
 
 ---
 
-## CORS
-
-Only `/stream/*` endpoints return CORS headers (allows `GET`, exposes `Content-Range` and `Content-Length`). `/api/*` does not — use a reverse proxy if cross-origin access is needed.
-
----
-
 ## Endpoints
 
 ### `POST /api/upload`
@@ -113,7 +107,7 @@ Start an async video upload. The server validates the file and begins background
 
 ---
 
-### `GET /api/status/{id}`
+### `GET /api/videos/{id}`
 
 Returns the full Video object. `{id}` can be `paylock_id` or `sui_object_id` (resolved in that order — `paylock_id` first because callers typically poll with it right after upload, before a `sui_object_id` exists).
 
@@ -124,7 +118,7 @@ Returns the full Video object. `{id}` can be `paylock_id` or `sui_object_id` (re
 
 ---
 
-### `GET /api/status/{id}/events`
+### `GET /api/status/{id}`
 
 SSE stream. Immediately sends the current Video object, then pushes updates on state changes (preview uploaded, ready, failed). Reconnect if the connection drops while `processing`.
 
@@ -175,27 +169,6 @@ Delete a video record from the local store. Does **not** delete Walrus blobs or 
 
 ---
 
-### `GET /stream/{id}/preview`
-
-307 redirect to the Walrus aggregator URL for the **preview** blob (short clip or thumbnail used for browsing).
-
-- Accepts both `paylock_id` and `sui_object_id`.
-- If accessed by `paylock_id` that has a linked `sui_object_id`, redirects to the canonical path with `Deprecation` and `Sunset: 2026-06-23` headers.
-- The preview blob is always **unencrypted** — anyone can view it without purchasing.
-
----
-
-### `GET /stream/{id}/full`
-
-307 redirect to the Walrus aggregator URL for the **full** video blob.
-
-- Accepts both `paylock_id` and `sui_object_id`.
-- If accessed by `paylock_id` that has a linked `sui_object_id`, redirects to the canonical path with `Deprecation` and `Sunset: 2026-06-23` headers.
-- **Free videos**: the full blob is unencrypted and directly playable.
-- **Paid videos**: the full blob is Seal-encrypted — the client must hold a valid `AccessPass` and decrypt it with Seal before playback.
-
----
-
 ### `GET /api/config`
 
 Client configuration.
@@ -233,7 +206,7 @@ const { id } = await fetch(`${PAYLOCK}/api/upload`, {
 
 // Wait for server to extract and upload the preview
 const preview = await new Promise((resolve, reject) => {
-  const es = new EventSource(`${PAYLOCK}/api/status/${id}/events`);
+  const es = new EventSource(`${PAYLOCK}/api/status/${id}`);
   es.onmessage = (e) => {
     const v = JSON.parse(e.data);
     if (v.preview_blob_id) { es.close(); resolve(v); }
@@ -267,7 +240,7 @@ tx.moveCall({
 
 ### 4. Wait for watcher sync
 
-The chain watcher polls Sui for `VideoCreated` events and links the on-chain object to the local record. Poll `GET /api/status/{id}` or reconnect to the SSE stream until `status === 'ready'` and `sui_object_id` is set.
+The chain watcher polls Sui for `VideoCreated` events and links the on-chain object to the local record. Poll `GET /api/videos/{id}` or reconnect to the SSE stream (`GET /api/status/{id}`) until `status === 'ready'` and `sui_object_id` is set.
 
 ---
 

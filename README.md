@@ -20,7 +20,7 @@ PayLock is a Go backend for decentralized video hosting. It stores video assets 
 
 1. Client uploads a video to `POST /api/upload`.
 2. Server validates the file, optionally extracts a preview clip and thumbnail (FFmpeg), and uploads all blobs to Walrus.
-3. Status transitions to `ready`. Playback via `GET /stream/{id}/preview` or `/full` (307 redirect to Walrus).
+3. Status transitions to `ready`. The video object (from `GET /api/videos/{id}`) contains `preview_blob_url` and `full_blob_url` for direct Walrus playback.
 
 > When FFmpeg is disabled, the server skips preview extraction and uses the full file as the preview blob.
 
@@ -40,8 +40,8 @@ sequenceDiagram
     S->>W: Store full blob
     S->>W: Store thumbnail (if generated)
     S-->>S: Status → ready
-    C->>S: GET /stream/{id}/preview
-    S-->>C: 307 → Walrus aggregator URL
+    C->>S: GET /api/videos/{id}
+    S-->>C: 200 { preview_blob_url, full_blob_url, ... }
 ```
 
 ### Paid Videos (price > 0)
@@ -51,7 +51,7 @@ sequenceDiagram
 3. Client encrypts the full video with [Seal](https://github.com/MystenLabs/seal) (`@mysten/seal`) and uploads the encrypted blob to Walrus.
 4. Client calls `gating::create_video` on-chain with all blob IDs and the Seal namespace.
 5. The chain watcher detects the `VideoCreated` event and links the on-chain object to the local record.
-6. Status transitions to `ready`. Playback via `GET /stream/{sui_object_id}/preview` or `/full`.
+6. Status transitions to `ready`. The video object contains `preview_blob_url` and `full_blob_url` for playback.
 
 ```mermaid
 sequenceDiagram
@@ -171,7 +171,7 @@ const { id } = await fetch(`${PAYLOCK}/api/upload`, { method: 'POST', body: form
 
 // 2. Wait for processing (SSE)
 await new Promise((resolve, reject) => {
-  const es = new EventSource(`${PAYLOCK}/api/status/${id}/events`);
+  const es = new EventSource(`${PAYLOCK}/api/status/${id}`);
   es.onmessage = (e) => {
     const v = JSON.parse(e.data);
     if (v.status === 'ready') { es.close(); resolve(); }

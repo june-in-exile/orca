@@ -14,7 +14,6 @@ import (
 	"github.com/anthropics/paylock/internal/config"
 	"github.com/anthropics/paylock/internal/handler"
 	"github.com/anthropics/paylock/internal/indexer"
-	"github.com/anthropics/paylock/internal/middleware"
 	"github.com/anthropics/paylock/internal/model"
 	"github.com/anthropics/paylock/internal/processor"
 	"github.com/anthropics/paylock/internal/suiauth"
@@ -91,17 +90,11 @@ func main() {
 
 	// API routes
 	mux.Handle("POST /api/upload", handler.NewUpload(wc, videos, cfg, sigVerifier, clock))
-	mux.Handle("GET /api/status/{id}", handler.NewStatus(videos))
-	mux.Handle("GET /api/status/{id}/events", handler.NewStatusEvents(videos))
+	mux.Handle("GET /api/videos/{id}", handler.NewStatus(videos))
 	mux.Handle("GET /api/videos", handler.NewVideos(videos))
 	mux.Handle("DELETE /api/videos/{id}", handler.NewDelete(videos, sigVerifier, clock))
+	mux.Handle("GET /api/status/{id}", handler.NewStatusEvents(videos))
 	mux.Handle("GET /api/config", handler.NewAppConfig(cfg))
-
-	// Stream routes — redirect to Walrus aggregator (supports both paylock_id and sui_object_id)
-	cors := middleware.CORS()
-	mux.Handle("GET /stream/{id}/preview", cors(handler.NewStreamPreview(videos)))
-	mux.Handle("GET /stream/{id}/full", cors(handler.NewStreamFull(videos)))
-
 
 	// Frontend (embedded static files)
 	webSub, err := fs.Sub(webFS, "web")
