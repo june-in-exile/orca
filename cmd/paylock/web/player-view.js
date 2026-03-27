@@ -313,11 +313,9 @@ export function PlayerView() {
         setHasAccess(true);
       }
 
-      // Recover full_blob_url from chain if missing
       if (!v.full_blob_url) {
-        await mod.recoverFullBlobId(v);
         const res = await fetch('/api/videos/' + encodeURIComponent(v.id));
-        if (!res.ok) { playPreview(v, el); return; }
+        if (!res.ok) { setError('Failed to load video details'); return; }
         v = await res.json();
         setVideo(v);
       }
@@ -333,8 +331,9 @@ export function PlayerView() {
       el.src = blobUrl;
       el.muted = true;
       el.play().catch(() => {});
-    } catch (err) {
-      setHint('Auto-decrypt failed: ' + err.message);
+    } catch (_) {
+      // Silently fall back to preview — user didn't request decrypt yet.
+      // If they click Unlock, handlePurchase will show errors explicitly.
       playPreview(v, el);
     }
   }
@@ -396,13 +395,16 @@ export function PlayerView() {
       if (!video.full_blob_url && video.sui_object_id) {
         setPurchaseText('Recovering blob ID from chain...');
         try {
-          const fullBlobId = await mod.recoverFullBlobId(video);
           const res = await fetch('/api/videos/' + encodeURIComponent(video.id));
-          if (res.ok) {
-            const refreshed = await res.json();
-            setVideo(refreshed);
-            video = refreshed;
+          if (!res.ok) {
+            setHint('Failed to load video details');
+            setPurchasing(false);
+            setPurchaseText('Unlock');
+            return;
           }
+          const refreshed = await res.json();
+          setVideo(refreshed);
+          video = refreshed;
         } catch (recoverErr) {
           setHint('Recovery failed: ' + recoverErr.message);
           setPurchasing(false);
@@ -435,11 +437,6 @@ export function PlayerView() {
       setPurchaseText('Unlock');
       setHint('Failed: ' + err.message);
     }
-  }
-
-  function shortAddr(addr) {
-    if (!addr || addr.length < 12) return addr || '';
-    return addr.slice(0, 6) + '...' + addr.slice(-4);
   }
 
   const safeStatus = ['ready', 'processing', 'failed'].includes(status) ? status : 'failed';

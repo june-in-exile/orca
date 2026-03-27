@@ -22,19 +22,6 @@ let gatingPackageId = null;
 let sealClient = null;
 let SealClientClass = null;
 
-async function fetchBlobRobust(url) {
-  for (let i = 0; i < 3; i++) {
-    try {
-      const res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      return new Uint8Array(await res.arrayBuffer());
-    } catch (e) {
-      if (i === 2) throw new Error('Network error fetching blob: ' + e.message);
-      await new Promise(r => setTimeout(r, 1500));
-    }
-  }
-}
-
 let SessionKeyClass = null;
 let EncryptedObjectClass = null;
 let fromHex = null;
@@ -43,6 +30,11 @@ let toB64 = null;
 let walrusPublisherUrl = '';
 let walrusAggregatorUrl = '';
 let walrusEpochs = 5;
+
+const SESSION_KEY_TTL_MIN = 10;
+const SESSION_KEY_BUFFER_MS = 60_000; // 1-min safety buffer
+let cachedSessionKey = null;
+let cachedSessionKeyCreatedAt = 0;
 
 function findSlushWallet() {
   return discoveredWallets.find((w) => w.name.toLowerCase().includes('slush'));
@@ -285,6 +277,8 @@ export async function disconnectWallet() {
   connectedAccount = null;
   connectedAccounts = [];
   activeAccountIndex = -1;
+  cachedSessionKey = null;
+  cachedSessionKeyCreatedAt = 0;
   sessionStorage.removeItem('paylock_wallet_addrs');
   sessionStorage.removeItem('paylock_active_addr');
   walletState.value = {
@@ -480,15 +474,20 @@ export async function purchaseVideo(video) {
   return accessPassId;
 }
 
-export async function decryptVideo(video, knownAccessPassId) {
+async function getOrCreateSessionKey() {
+  const now = Date.now();
+  const maxAge = SESSION_KEY_TTL_MIN * 60_000 - SESSION_KEY_BUFFER_MS;
+  if (cachedSessionKey && (now - cachedSessionKeyCreatedAt) < maxAge) {
+    return cachedSessionKey;
+  }
+
   if (!connectedWallet || !connectedAccount) throw new Error('Wallet not connected');
-  if (!sealClient || !SessionKeyClass || !EncryptedObjectClass) throw new Error('Seal SDK not loaded');
-  if (!video.full_blob_url) throw new Error('Encrypted blob not available — upload may have failed');
+  if (!SessionKeyClass) throw new Error('Seal SDK not loaded');
 
   const sessionKey = await SessionKeyClass.create({
     address: connectedAccount.address,
     packageId: gatingPackageId,
-    ttlMin: 10,
+    ttlMin: SESSION_KEY_TTL_MIN,
     suiClient,
   });
 
@@ -501,7 +500,21 @@ export async function decryptVideo(video, knownAccessPassId) {
   });
   sessionKey.setPersonalMessageSignature(signResult.signature);
 
-  const encryptedData = await fetchBlobRobust(video.full_blob_url);
+  cachedSessionKey = sessionKey;
+  cachedSessionKeyCreatedAt = now;
+  return sessionKey;
+}
+
+export async function decryptVideo(video, knownAccessPassId) {
+  if (!connectedWallet || !connectedAccount) throw new Error('Wallet not connected');
+  if (!sealClient || !SessionKeyClass || !EncryptedObjectClass) throw new Error('Seal SDK not loaded');
+  if (!video.full_blob_url) throw new Error('Encrypted blob not available — upload may have failed');
+
+  const sessionKey = await getOrCreateSessionKey();
+
+  const blobRes = await fetch(video.full_blob_url);
+  if (!blobRes.ok) throw new Error('Failed to fetch encrypted blob: HTTP ' + blobRes.status);
+  const encryptedData = new Uint8Array(await blobRes.arrayBuffer());
   if (encryptedData.length > 0 && encryptedData[0] === 0x7B) {
     const text = new TextDecoder().decode(encryptedData);
     throw new Error('Walrus returned an error instead of encrypted data: ' + text.slice(0, 200));
@@ -539,23 +552,11 @@ export async function decryptVideoAsOwner(video) {
   if (!sealClient || !SessionKeyClass || !EncryptedObjectClass) throw new Error('Seal SDK not loaded');
   if (!video.full_blob_url) throw new Error('Encrypted blob not available — upload may have failed');
 
-  const sessionKey = await SessionKeyClass.create({
-    address: connectedAccount.address,
-    packageId: gatingPackageId,
-    ttlMin: 10,
-    suiClient,
-  });
+  const sessionKey = await getOrCreateSessionKey();
 
-  const message = sessionKey.getPersonalMessage();
-  const signFeature = connectedWallet.features['sui:signPersonalMessage'];
-  if (!signFeature) throw new Error('Wallet does not support signPersonalMessage');
-  const signResult = await signFeature.signPersonalMessage({
-    message,
-    account: connectedAccount,
-  });
-  sessionKey.setPersonalMessageSignature(signResult.signature);
-
-  const encryptedData = await fetchBlobRobust(video.full_blob_url);
+  const blobRes = await fetch(video.full_blob_url);
+  if (!blobRes.ok) throw new Error('Failed to fetch encrypted blob: HTTP ' + blobRes.status);
+  const encryptedData = new Uint8Array(await blobRes.arrayBuffer());
   if (encryptedData.length > 0 && encryptedData[0] === 0x7B) {
     const text = new TextDecoder().decode(encryptedData);
     throw new Error('Walrus returned an error instead of encrypted data: ' + text.slice(0, 200));
@@ -563,7 +564,6 @@ export async function decryptVideoAsOwner(video) {
 
   const parsedEncrypted = EncryptedObjectClass.parse(encryptedData);
   const sealId = parsedEncrypted.id;
-
   const tx = new Transaction();
   tx.moveCall({
     target: gatingPackageId + '::gating::seal_approve_owner',
@@ -582,23 +582,6 @@ export async function decryptVideoAsOwner(video) {
 
   const blob = new Blob([decryptedBytes], { type: 'video/mp4' });
   return URL.createObjectURL(blob);
-}
-
-export async function recoverFullBlobId(video) {
-  if (!suiClient) throw new Error('Sui client not loaded');
-  if (!video.sui_object_id) throw new Error('No on-chain object to recover from');
-
-  const obj = await suiClient.getObject({
-    id: video.sui_object_id,
-    options: { showContent: true },
-  });
-
-  const fields = obj.data && obj.data.content && obj.data.content.fields;
-  if (!fields || !fields.full_blob_id) {
-    throw new Error('Could not read full_blob_id from on-chain Video object');
-  }
-
-  return fields.full_blob_id;
 }
 
 export async function signForAuth(action, resourceID) {

@@ -34,8 +34,8 @@ type Upload struct {
 	clock    suiauth.Clock
 }
 
-func NewUpload(w Storer, videos *model.VideoStore, cfg *config.Config, verifier SigVerifier, clock suiauth.Clock) *Upload {
-	return &Upload{walrus: w, videos: videos, cfg: cfg, verifier: verifier, clock: clock}
+func NewUpload(store Storer, videos *model.VideoStore, cfg *config.Config, verifier SigVerifier, clock suiauth.Clock) *Upload {
+	return &Upload{walrus: store, videos: videos, cfg: cfg, verifier: verifier, clock: clock}
 }
 
 func (h *Upload) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -117,7 +117,7 @@ func (h *Upload) handleFreeUpload(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), uploadTimeout)
 		defer cancel()
-		h.processAndUpload(ctx, id, data, previewDuration)
+		h.processAndUploadFree(ctx, id, data, previewDuration)
 	}()
 
 	writeJSON(w, http.StatusAccepted, map[string]any{
@@ -247,8 +247,8 @@ func (h *Upload) processAndUploadPaid(ctx context.Context, id string, data []byt
 	)
 }
 
-// processAndUpload handles async processing for free video uploads.
-func (h *Upload) processAndUpload(ctx context.Context, id string, data []byte, previewDuration int) {
+// processAndUploadFree handles async processing for free video uploads.
+func (h *Upload) processAndUploadFree(ctx context.Context, id string, data []byte, previewDuration int) {
 	previewData := data
 	var thumbnailData []byte
 	if h.cfg.FFmpegEnabled {
@@ -345,16 +345,16 @@ func (h *Upload) uploadBothBlobs(ctx context.Context, preview, full []byte) (str
 		fullCh <- result{blobID, err}
 	}()
 
-	pr := <-previewCh
-	fr := <-fullCh
+	previewRes := <-previewCh
+	fullRes := <-fullCh
 
-	if pr.err != nil {
-		return "", "", pr.err
+	if previewRes.err != nil {
+		return "", "", previewRes.err
 	}
-	if fr.err != nil {
-		return "", "", fr.err
+	if fullRes.err != nil {
+		return "", "", fullRes.err
 	}
-	return pr.blobID, fr.blobID, nil
+	return previewRes.blobID, fullRes.blobID, nil
 }
 
 func generateID() string {

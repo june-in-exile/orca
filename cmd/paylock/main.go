@@ -90,7 +90,7 @@ func main() {
 
 	// API routes
 	mux.Handle("POST /api/upload", handler.NewUpload(wc, videos, cfg, sigVerifier, clock))
-	mux.Handle("GET /api/videos/{id}", handler.NewStatus(videos))
+	mux.Handle("GET /api/videos/{id}", handler.NewVideo(videos))
 	mux.Handle("GET /api/videos", handler.NewVideos(videos))
 	mux.Handle("DELETE /api/videos/{id}", handler.NewDelete(videos, sigVerifier, clock))
 	mux.Handle("GET /api/status/{id}", handler.NewStatusEvents(videos))

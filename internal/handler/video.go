@@ -6,15 +6,15 @@ import (
 	"github.com/anthropics/paylock/internal/model"
 )
 
-type Status struct {
+type Video struct {
 	videos *model.VideoStore
 }
 
-func NewStatus(videos *model.VideoStore) *Status {
-	return &Status{videos: videos}
+func NewVideo(videos *model.VideoStore) *Video {
+	return &Video{videos: videos}
 }
 
-func (h *Status) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *Video) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
