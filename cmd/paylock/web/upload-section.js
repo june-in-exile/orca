@@ -158,6 +158,21 @@ function pollUntilReady(id) {
   });
 }
 
+function pollUntilSuiObjectId(id) {
+  return new Promise((resolve, reject) => {
+    const poll = async () => {
+      try {
+        const res = await fetch('/api/status/' + encodeURIComponent(id));
+        if (!res.ok) { reject(new Error('Status check failed')); return; }
+        const video = await res.json();
+        if (video.sui_object_id) { resolve(video); return; }
+        setTimeout(poll, 1500);
+      } catch (err) { reject(err); }
+    };
+    poll();
+  });
+}
+
 let previewDurationDefault = 10;
 let previewDurationMin = 10;
 let previewDurationMax = 30;
@@ -349,8 +364,8 @@ async function confirmUpload(fileInput) {
     }
     previewDurationSec = previewDuration;
   }
-  if (priceMist > 0 && !walletState.value.connected) {
-    showToast('error', 'Please connect your wallet before uploading a paid video.', 5000);
+  if (!walletState.value.connected) {
+    showToast('error', 'Please connect your wallet before uploading.', 5000);
     return;
   }
 
@@ -409,7 +424,26 @@ async function confirmUpload(fileInput) {
     } else {
       uploadState.value = { ...uploadState.value, showSpinner: true, text: 'Processing video...' };
       const video = await pollUntilReady(data.id);
-      if (video.sui_object_id) navigateId = video.sui_object_id;
+
+      // Create free video on-chain so reindexer can recover it
+      try {
+        uploadState.value = { ...uploadState.value, text: 'Creating video on-chain...' };
+        const mod = await loadWallet();
+        const videoTitle = document.getElementById('video-title').value || '';
+        const suiObjectId = await mod.createVideoOnChain(
+          data.id, videoTitle, 0,
+          video.thumbnail_blob_id || '',
+          video.preview_blob_id || '',
+          video.full_blob_id,
+          [],
+        );
+        uploadState.value = { ...uploadState.value, text: 'Waiting for chain confirmation...' };
+        await pollUntilSuiObjectId(data.id);
+        navigateId = suiObjectId;
+      } catch (err) {
+        // Video is still usable on Walrus — warn but don't fail
+        showToast('warning', 'Video uploaded but on-chain registration failed: ' + err.message, 8000);
+      }
     }
 
     clearStagedFile();

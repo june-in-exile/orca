@@ -1,9 +1,109 @@
 import { html, useState, useEffect, useRef } from './lib.js';
 import {
   viewParams, navGeneration, currentVideo, walletState,
-  navigate, formatSui, loadWallet, setPollCleanup,
+  navigate, formatSui, formatDate, loadWallet, setPollCleanup,
 } from './state.js';
 import { signForAuth, setAuthHeaders, isWalletConnected } from './wallet.js';
+
+function DetailRow({ label, children }) {
+  return html`
+    <div class="detail-row">
+      <span class="detail-label">${label}</span>
+      <span class="detail-value">${children}</span>
+    </div>
+  `;
+}
+
+function VideoDetails({ video, hasAccess, wallet }) {
+  if (!video) return null;
+
+  const isPaid = video.price > 0;
+  const ownerMode = video.creator && wallet.address && video.creator === wallet.address;
+
+  return html`
+    <div class="video-details">
+      <div class="video-details-title">Details</div>
+
+      <${DetailRow} label="Status">
+        <span class=${'status-badge ' + video.status}>${video.status}</span>
+      <//>
+
+      <${DetailRow} label="Type">
+        <span class=${isPaid ? 'price-badge paid' : 'price-badge free'}>
+          ${isPaid ? formatSui(video.price) + ' SUI' : 'Free'}
+        </span>
+        ${video.encrypted && html`
+          <span style="margin-left:0.4rem; font-size:0.75rem; color:var(--accent);">Seal encrypted</span>
+        `}
+      <//>
+
+      ${isPaid && wallet.connected && html`
+        <${DetailRow} label="Access">
+          ${ownerMode
+            ? html`<span class="access-badge unlocked">Owner</span>`
+            : hasAccess
+              ? html`<span class="access-badge unlocked">Unlocked</span>`
+              : html`<span class="access-badge locked">Locked</span>`
+          }
+        <//>
+      `}
+
+      <${DetailRow} label="Uploaded">
+        ${formatDate(video.created_at)}
+      <//>
+
+      ${video.creator && html`
+        <${DetailRow} label="Creator">
+          <a href=${'https://suiscan.xyz/testnet/account/' + video.creator} target="_blank" rel="noopener noreferrer"
+            style="font-family:monospace; color:var(--accent); text-decoration:none; border-bottom:1px dashed var(--accent);"
+            title=${video.creator}>${video.creator.slice(0, 10) + '...' + video.creator.slice(-4)}</a>
+        <//>
+      `}
+
+      ${video.sui_object_id && html`
+        <${DetailRow} label="Object ID">
+          <a href=${'https://suiscan.xyz/testnet/object/' + video.sui_object_id} target="_blank" rel="noopener noreferrer"
+            style="font-family:monospace; color:var(--accent); text-decoration:none; border-bottom:1px dashed var(--accent);"
+            title=${video.sui_object_id}>${video.sui_object_id.slice(0, 10) + '...' + video.sui_object_id.slice(-4)}</a>
+        <//>
+      `}
+
+      ${!video.sui_object_id && html`
+        <${DetailRow} label="Paylock ID">
+          <span style="font-family:monospace;">${video.id}</span>
+        <//>
+      `}
+
+      ${video.preview_blob_id && html`
+        <${DetailRow} label="Preview Blob">
+          <a href=${'https://walruscan.com/testnet/blob/' + video.preview_blob_id} target="_blank" rel="noopener noreferrer"
+            style="font-family:monospace; font-size:0.75rem; color:var(--accent); text-decoration:none; border-bottom:1px dashed var(--accent);"
+            title=${video.preview_blob_id}>${video.preview_blob_id.slice(0, 12) + '...'}</a>
+        <//>
+      `}
+
+      ${video.full_blob_id && html`
+        <${DetailRow} label="Full Blob">
+          <a href=${'https://walruscan.com/testnet/blob/' + video.full_blob_id} target="_blank" rel="noopener noreferrer"
+            style="font-family:monospace; font-size:0.75rem; color:var(--accent); text-decoration:none; border-bottom:1px dashed var(--accent);"
+            title=${video.full_blob_id}>${video.full_blob_id.slice(0, 12) + '...'}</a>
+        <//>
+      `}
+
+      ${video.deleted && html`
+        <${DetailRow} label="Deleted">
+          <span style="color:var(--error);">${formatDate(video.deleted_at) || 'Yes'}</span>
+        <//>
+      `}
+
+      ${video.error && html`
+        <${DetailRow} label="Error">
+          <span style="color:var(--error);">${video.error}</span>
+        <//>
+      `}
+    </div>
+  `;
+}
 
 function ChainStatus({ video }) {
   if (!video) return null;
@@ -388,25 +488,9 @@ export function PlayerView() {
     <div class="view active">
       <a class="back-link" onclick=${() => navigate('my-videos')}>\u2190 Back to videos</a>
       <div class="player-info">
-        <div style="display:flex; flex-direction:column; gap:0.35rem; min-width:0;">
-          <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
-            <span style="font-size:1.25rem; font-weight:600;">${title}</span>
-            ${status !== 'loading' && html`<span class=${'status-badge ' + safeStatus}>${status}</span>`}
-          </div>
-          <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; font-size:0.8rem; color:var(--text-muted);">
-            ${video && video.sui_object_id
-              ? html`<span>Object ID: <a href=${'https://suiscan.xyz/testnet/object/' + video.sui_object_id} target="_blank" rel="noopener noreferrer"
-                  style="font-family:monospace; color:var(--accent); text-decoration:none; border-bottom:1px dashed var(--accent);"
-                  title=${video.sui_object_id}>${shortAddr(video.sui_object_id)}</a></span>`
-              : html`<span>ID: <span style="font-family:monospace;">${params.id}</span></span>`
-            }
-            ${video && video.creator && html`
-              <span style="opacity:0.4;">\u00b7</span>
-              <span>Owner: <a href=${'https://suiscan.xyz/testnet/account/' + video.creator} target="_blank" rel="noopener noreferrer"
-                style="font-family:monospace; color:var(--accent); text-decoration:none; border-bottom:1px dashed var(--accent);"
-                title=${video.creator}>${shortAddr(video.creator)}</a></span>
-            `}
-          </div>
+        <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
+          <span style="font-size:1.25rem; font-weight:600;">${title}</span>
+          ${status !== 'loading' && html`<span class=${'status-badge ' + safeStatus}>${status}</span>`}
         </div>
       </div>
 
@@ -450,6 +534,8 @@ export function PlayerView() {
           ${statusText}
         </div>
       `}
+
+      ${video && html`<${VideoDetails} video=${video} hasAccess=${hasAccess} wallet=${wallet} />`}
 
       <div class="player-actions">
         ${video && isOwner(video) && html`
