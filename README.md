@@ -53,8 +53,6 @@ sequenceDiagram
 5. The chain watcher detects the `VideoCreated` event and links the on-chain object to the local record.
 6. Status transitions to `ready`. Playback via `GET /stream/{sui_object_id}/preview` or `/full`.
 
-<<<<<<< HEAD
-=======
 ```mermaid
 sequenceDiagram
     participant C as Client
@@ -75,14 +73,11 @@ sequenceDiagram
     S-->>S: Status → ready
 ```
 
->>>>>>> 8b0d4ce (chore: remove reindex endpoint and legacy stream path)
 ### Purchase Flow
 
 1. Buyer calls `purchase_and_transfer` on-chain → mints an `AccessPass`.
 2. Buyer creates a Seal `SessionKey`, builds a `seal_approve` Move call, and passes it to `sealClient.decrypt()` to obtain decryption keys.
 3. Client decrypts the encrypted full blob in the browser and plays it.
-<<<<<<< HEAD
-=======
 
 ```mermaid
 sequenceDiagram
@@ -100,7 +95,6 @@ sequenceDiagram
     B->>W: Fetch encrypted full blob
     B->>B: Decrypt & play video
 ```
->>>>>>> 8b0d4ce (chore: remove reindex endpoint and legacy stream path)
 
 ### Streaming & IDs
 

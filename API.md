@@ -115,11 +115,7 @@ Start an async video upload. The server validates the file and begins background
 
 ### `GET /api/status/{id}`
 
-<<<<<<< HEAD
-Returns the full Video object. `{id}` can be `paylock_id` or `sui_object_id` (resolved in that order).
-=======
 Returns the full Video object. `{id}` can be `paylock_id` or `sui_object_id` (resolved in that order — `paylock_id` first because callers typically poll with it right after upload, before a `sui_object_id` exists).
->>>>>>> 8b0d4ce (chore: remove reindex endpoint and legacy stream path)
 
 | Error | Reason |
 |-------|--------|
@@ -292,19 +288,6 @@ From `contracts/sources/gating.move`:
 ## Troubleshooting
 
 **Upload stuck on `processing`**
-<<<<<<< HEAD
-- Free videos: check server logs for FFmpeg or Walrus errors.
-- Paid videos: you must call `create_video` on-chain; otherwise the watcher has nothing to link.
-
-**Wallet signature rejected**
-- Ensure the timestamp is within ±60 seconds of the server clock.
-- Ensure the signing address matches the video's `creator`.
-
-**Walrus blob not loading**
-- Walrus storage is epoch-based. Expired blobs cannot be streamed. Renewals are not yet implemented.
-
-**ID resolution**
-=======
 
 - Free videos: check server logs for FFmpeg or Walrus errors.
 - Paid videos: you must call `create_video` on-chain; otherwise the watcher has nothing to link.
@@ -320,5 +303,4 @@ From `contracts/sources/gating.move`:
 
 **ID resolution**
 
->>>>>>> 8b0d4ce (chore: remove reindex endpoint and legacy stream path)
 - All endpoints that accept `{id}` resolve by `paylock_id` first, then by `sui_object_id`. Prefer `sui_object_id` for stable links.

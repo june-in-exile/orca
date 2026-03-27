@@ -105,44 +105,6 @@ function VideoDetails({ video, hasAccess, wallet }) {
   `;
 }
 
-function ChainStatus({ video }) {
-  if (!video) return null;
-
-  if (video.sui_object_id) {
-    const url = 'https://suiscan.xyz/testnet/object/' + video.sui_object_id + '/tx-blocks';
-    const shortId = video.sui_object_id.slice(0, 10) + '...' + video.sui_object_id.slice(-4);
-    return html`
-      <div style="margin-top: 0.75rem; padding: 0.75rem 1rem; background: var(--surface); border-radius: 8px; font-size: 0.85rem;">
-        <span style="color:var(--success);">On-chain</span>${' '}
-        <a href=${url} target="_blank" rel="noopener noreferrer"
-          style="font-family:monospace; color:var(--accent); font-size:0.75rem; text-decoration:none; border-bottom:1px dashed var(--accent);">
-          ${shortId}
-        </a>
-        ${video.encrypted && html`
-          <span style="color:var(--accent); font-size:0.75rem;"> Seal encrypted</span>
-        `}
-      </div>
-    `;
-  }
-
-  if (video.price > 0 && !video.full_blob_id) {
-    return html`
-      <div style="margin-top: 0.75rem; padding: 0.75rem 1rem; background: var(--surface); border-radius: 8px; font-size: 0.85rem;">
-        <span style="color:var(--warning);">Awaiting Seal encryption & on-chain publish</span>
-      </div>
-    `;
-  }
-
-  if (video.price > 0) {
-    return html`
-      <div style="margin-top: 0.75rem; padding: 0.75rem 1rem; background: var(--surface); border-radius: 8px; font-size: 0.85rem;">
-        <span style="color:var(--text-muted);">Connect wallet to publish on-chain</span>
-      </div>
-    `;
-  }
-
-  return null;
-}
 
 function PaywallOverlay({ video, onPurchase, purchaseText, purchasing, hint, isOwner }) {
   if (!video) return null;
@@ -526,7 +488,7 @@ export function PlayerView() {
           </button>
         `}
 
-        ${video && html`<${ChainStatus} video=${video} />`}
+        ${''}
       </div>
 
       ${statusText && html`

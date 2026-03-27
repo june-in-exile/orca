@@ -42,7 +42,7 @@ func ExtractPreview(data []byte, durationSec int, ffmpegPath string) ([]byte, er
 }
 
 func writeTempInput(data []byte) (string, error) {
-	f, err := os.CreateTemp("", "paylock-input-*.mp4")
+	f, err := os.CreateTemp("", "paylock-input-*")
 	if err != nil {
 		return "", fmt.Errorf("create temp input file: %w", err)
 	}
@@ -90,7 +90,8 @@ func runFFmpeg(ffmpegPath, input, output string, durationSec int) error {
 	return runFFmpegCmd(
 		ffmpegPath, input, output,
 		"-t", strconv.Itoa(durationSec),
-		"-c", "copy",
+		"-c:v", "libx264", "-preset", "fast", "-crf", "23",
+		"-c:a", "aac", "-b:a", "128k",
 		"-movflags", "+faststart",
 	)
 }
@@ -181,8 +182,17 @@ func EnsureFaststart(data []byte, ffmpegPath string) ([]byte, error) {
 	}
 	defer removeTempFile(outputFile)
 
+	// Try stream copy first (fast, lossless). Falls back to transcode for
+	// containers whose codecs (e.g. VP8/VP9, Opus) can't be muxed into MP4.
 	if err := runFFmpegCmd(ffmpegPath, inputFile, outputFile, "-c", "copy", "-movflags", "+faststart"); err != nil {
-		return nil, err
+		slog.Warn("faststart copy failed, transcoding to H.264/AAC", "error", err)
+		if err := runFFmpegCmd(ffmpegPath, inputFile, outputFile,
+			"-c:v", "libx264", "-preset", "fast", "-crf", "23",
+			"-c:a", "aac", "-b:a", "128k",
+			"-movflags", "+faststart",
+		); err != nil {
+			return nil, err
+		}
 	}
 
 	return readAndValidateOutput(outputFile)
