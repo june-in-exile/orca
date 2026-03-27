@@ -217,7 +217,7 @@ export function PlayerView() {
           setStatus('processing');
 
           if (typeof EventSource !== 'undefined') {
-            es = new EventSource('/api/videos/' + encodeURIComponent(params.id));
+            es = new EventSource('/api/status/' + encodeURIComponent(params.id));
             es.onmessage = (e) => {
               if (cancelled) { es.close(); return; }
               const v = JSON.parse(e.data);

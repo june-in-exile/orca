@@ -145,7 +145,7 @@ function sendUpload(formData, fileName, authHeaders) {
 function pollUntilReady(id) {
   return new Promise((resolve, reject) => {
     if (typeof EventSource !== 'undefined') {
-      const es = new EventSource('/api/videos/' + encodeURIComponent(id));
+      const es = new EventSource('/api/status/' + encodeURIComponent(id));
       es.onmessage = (e) => {
         const video = JSON.parse(e.data);
         if (video.status === 'ready') { es.close(); resolve(video); }
@@ -323,7 +323,7 @@ function pollFallback(id) {
 function pollUntilPreviewUploaded(id) {
   return new Promise((resolve, reject) => {
     if (typeof EventSource !== 'undefined') {
-      const es = new EventSource('/api/videos/' + encodeURIComponent(id));
+      const es = new EventSource('/api/status/' + encodeURIComponent(id));
       es.onmessage = (e) => {
         const video = JSON.parse(e.data);
         if (video.status === 'failed') { es.close(); reject(new Error(video.error || 'Upload failed')); }
