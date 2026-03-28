@@ -170,40 +170,54 @@ func (w *Watcher) rpcCall(ctx context.Context, method string, params []any) (jso
 		return nil, fmt.Errorf("marshal rpc request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, w.rpcURL, bytes.NewReader(data))
-	if err != nil {
-		return nil, fmt.Errorf("create rpc request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, w.rpcURL, bytes.NewReader(data))
+		if err != nil {
+			return nil, fmt.Errorf("create rpc request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
 
-	resp, err := w.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("rpc call %s: %w", method, err)
-	}
-	defer resp.Body.Close()
+		resp, err := w.client.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("rpc call %s: %w", method, err)
+			time.Sleep(time.Duration(1<<attempt) * time.Second)
+			continue
+		}
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
-	if err != nil {
-		return nil, fmt.Errorf("read rpc response: %w", err)
+		respBody, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+		resp.Body.Close()
+		if err != nil {
+			lastErr = fmt.Errorf("read rpc response: %w", err)
+			time.Sleep(time.Duration(1<<attempt) * time.Second)
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("rpc call %s: status %d: %s", method, resp.StatusCode, string(respBody))
+			if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+				time.Sleep(time.Duration(1<<attempt) * time.Second)
+				continue
+			}
+			return nil, lastErr
+		}
+
+		var rpcResp struct {
+			Result json.RawMessage `json:"result"`
+			Error  *struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(respBody, &rpcResp); err != nil {
+			return nil, fmt.Errorf("parse rpc response: %w", err)
+		}
+		if rpcResp.Error != nil {
+			return nil, fmt.Errorf("rpc error %d: %s", rpcResp.Error.Code, rpcResp.Error.Message)
+		}
+
+		return rpcResp.Result, nil
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("rpc call %s: status %d: %s", method, resp.StatusCode, string(respBody))
-	}
-
-	var rpcResp struct {
-		Result json.RawMessage `json:"result"`
-		Error  *struct {
-			Code    int    `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(respBody, &rpcResp); err != nil {
-		return nil, fmt.Errorf("parse rpc response: %w", err)
-	}
-	if rpcResp.Error != nil {
-		return nil, fmt.Errorf("rpc error %d: %s", rpcResp.Error.Code, rpcResp.Error.Message)
-	}
-
-	return rpcResp.Result, nil
+	return nil, fmt.Errorf("rpc call failed after 3 attempts: %v", lastErr)
 }

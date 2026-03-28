@@ -6,6 +6,20 @@ Default: `http://localhost:8080`. All paths below are relative to the base URL.
 
 ---
 
+## Quick Reference
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/upload` | Upload a video (async, returns `202`) |
+| `GET` | `/api/videos/{id}` | Get video metadata by ID |
+| `GET` | `/api/videos` | List videos with filtering and pagination |
+| `DELETE` | `/api/videos/{id}` | Delete a video record |
+| `PATCH` | `/api/videos/{id}/link` | Link an on-chain Sui object to a video |
+| `GET` | `/api/status/{id}` | SSE stream for real-time processing status |
+| `GET` | `/api/config` | Get frontend configuration |
+
+---
+
 ## Authentication
 
 Some endpoints accept or require Sui wallet signatures via request headers.
