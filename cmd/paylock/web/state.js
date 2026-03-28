@@ -59,6 +59,8 @@ export function navigate(view, params = {}, push = true) {
     if (push) history.pushState({ view }, '', '/');
   } else if (view === 'browse') {
     if (push) history.pushState({ view }, '', '/browse');
+  } else if (view === 'workflow') {
+    if (push) history.pushState({ view }, '', '/workflow');
   } else if (view === 'player' && params.id) {
     if (push) history.pushState({ view, id: params.id }, '', '/play/' + params.id);
   }

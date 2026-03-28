@@ -6,6 +6,7 @@ import {
 import { MyVideosView } from './my-videos-view.js';
 import { BrowseView } from './browse-view.js';
 import { PlayerView } from './player-view.js';
+import { WorkflowView } from './workflow-view.js';
 import { detectVideoDuration } from './upload-section.js';
 
 function Header() {
@@ -51,6 +52,7 @@ function Header() {
         </div>
         <nav class="nav-links">
           <a class=${'nav-link' + (view === 'browse' ? ' active' : '')} onclick=${() => navigate('browse')}>Browse</a>
+          <a class=${'nav-link' + (view === 'workflow' ? ' active' : '')} onclick=${() => navigate('workflow')}>Workflow</a>
         </nav>
         <div class="wallet-area">
           <button
@@ -74,6 +76,7 @@ function Header() {
       <nav class="nav-links">
         <a class=${'nav-link' + (view === 'my-videos' ? ' active' : '')} onclick=${() => navigate('my-videos')}>My Videos</a>
         <a class=${'nav-link' + (view === 'browse' ? ' active' : '')} onclick=${() => navigate('browse')}>Browse</a>
+        <a class=${'nav-link' + (view === 'workflow' ? ' active' : '')} onclick=${() => navigate('workflow')}>Workflow</a>
       </nav>
       <div class="wallet-area">
         <div class="wallet-info">
@@ -170,6 +173,8 @@ function App() {
         navigate('player', { id: path.slice(6) }, false);
       } else if (path === '/browse') {
         navigate('browse', {}, false);
+      } else if (path === '/workflow') {
+        navigate('workflow', {}, false);
       } else {
         navigate('my-videos', {}, false);
       }
@@ -189,6 +194,7 @@ function App() {
     <main>
       ${view === 'my-videos' && html`<${MyVideosView} />`}
       ${view === 'browse' && html`<${BrowseView} />`}
+      ${view === 'workflow' && html`<${WorkflowView} />`}
       ${view === 'player' && html`<${PlayerView} />`}
     </main>
     <${Toast} />

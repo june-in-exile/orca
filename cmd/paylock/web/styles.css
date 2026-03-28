@@ -871,3 +871,32 @@ h2 {
 .wallet-dropdown-item.disconnect:hover {
   color: var(--accent-hover);
 }
+
+/* Workflow View */
+.workflow-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.workflow-section h3 {
+  margin-bottom: 0.5rem;
+  font-size: 1.1rem;
+  color: var(--accent);
+}
+
+.workflow-section p {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 1.5rem;
+}
+
+.mermaid {
+  background: var(--bg);
+  padding: 1rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  text-align: center;
+}
